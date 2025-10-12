@@ -2,6 +2,7 @@
 ![01](https://github.com/user-attachments/assets/33fb339a-71ce-47b3-a218-aee76b7dec3c)
 ![2025-10-10 13-38](https://github.com/user-attachments/assets/8350b855-86ce-48bd-8091-423eeda3c69e)
 
+
 **پاک‌نویس، ویراستیاری آزاد برای لیبره‌آفیس
 **
 ✅ این ماکرو کارهای زیر از دستش ساخته است و امیدوارم در آینده بتوانم به قابلیت‌هایش اضافه کنم:
