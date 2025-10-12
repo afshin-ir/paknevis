@@ -2,8 +2,10 @@ import os
 import re
 import xml.etree.ElementTree as ET
 import uno
+import unohelper
 from com.sun.star.awt import MessageBoxButtons as MBButtons
 from com.sun.star.awt.MessageBoxType import MESSAGEBOX
+from com.sun.star.awt import XTopWindowListener
 
 CONFIG_FILE = "/home/afshin/.config/libreoffice/4/user/Scripts/python/TextFixer.conf"
 REPLACEMENTS_FILE = "/home/afshin/.config/libreoffice/4/user/Scripts/python/DocumentList.xml"
@@ -40,7 +42,7 @@ def load_config():
     defaults = {key: True for key in [
         "fix_k_y", "fix_punct", "fix_quotes", "fix_numbers_en", "fix_numbers_ar",
         "fix_he_ye", "fix_me_nemi", "fix_prefix_verbs", "fix_suffixes", "fix_dict",
-        "fix_spaces", "fix_extra_spaces"
+        "fix_spaces", "fix_extra_spaces", "fix_ellipsis"
     ]}
     if not os.path.exists(CONFIG_FILE):
         return defaults
@@ -62,10 +64,21 @@ def save_config(options):
     except Exception:
         pass
 
+class MyTopWindowListener(unohelper.Base, XTopWindowListener):
+    def windowClosing(self, ev):
+        try:
+            ev.Source.dispose()
+        except Exception:
+            pass
+    def windowClosed(self, ev): pass
+    def windowActivated(self, ev): pass
+    def windowDeactivated(self, ev): pass
+
 def show_dialog(options):
     ctx = uno.getComponentContext()
     smgr = ctx.ServiceManager
     toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
+
     dialog_model = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", ctx)
     dialog = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialog", ctx)
     dialog.setModel(dialog_model)
@@ -83,39 +96,69 @@ def show_dialog(options):
         ("fix_suffixes", "اصلاح فاصله‌گذاری پسوندها"),
         ("fix_dict", "تصحیح غلط‌های املایی (بانک)"),
         ("fix_spaces", "حذف فاصله قبل/بعد علائم"),
-        ("fix_extra_spaces", "حذف فاصله‌های اضافی بین واژه‌ها")
+        ("fix_extra_spaces", "حذف فاصله‌های اضافی بین واژه‌ها"),
+        ("fix_ellipsis", "اصلاح سه‌نقطهٔ تعلیق")
     ]
 
-    y = 10
+    item_height = 15
+    padding_top = 10
+    padding_bottom = 30
+    btn_height = 15
+    dialog_height = padding_top + len(items) * item_height + padding_bottom
+    dialog_width = 300
+    dialog_model.setPropertyValue("Width", dialog_width)
+    dialog_model.setPropertyValue("Height", dialog_height)
+    dialog_model.setPropertyValue("PositionX", 100)
+    dialog_model.setPropertyValue("PositionY", 100)
+
+    y = padding_top
     for key, label in items:
         cb = dialog_model.createInstance("com.sun.star.awt.UnoControlCheckBoxModel")
         cb.setPropertyValue("PositionX", 10)
         cb.setPropertyValue("PositionY", y)
         cb.setPropertyValue("Width", 250)
-        cb.setPropertyValue("Height", 10)
+        cb.setPropertyValue("Height", 12)
         cb.setPropertyValue("Label", label)
         cb.setPropertyValue("State", 1 if options.get(key, True) else 0)
         dialog_model.insertByName(key, cb)
-        y += 12
+        y += item_height
 
     btn_ok = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
     btn_ok.setPropertyValue("PositionX", 10)
     btn_ok.setPropertyValue("PositionY", y)
-    btn_ok.setPropertyValue("Width", 50)
+    btn_ok.setPropertyValue("Width", 70)
+    btn_ok.setPropertyValue("Height", btn_height)
     btn_ok.setPropertyValue("Label", "اجرا")
+    btn_ok.setPropertyValue("PushButtonType", 1)
+    btn_ok.setPropertyValue("DefaultButton", True)
     dialog_model.insertByName("btn_ok", btn_ok)
 
-    dialog.setVisible(True)
     dialog.createPeer(toolkit, None)
-    dialog.execute()
 
-    selected = {key: dialog.getControl(key).getState() == 1 for key, _ in items}
+    try:
+        peer = dialog.getPeer()
+        listener = MyTopWindowListener()
+        try:
+            peer.addTopWindowListener(listener)
+        except Exception:
+            try:
+                peer.getContainerWindow().addTopWindowListener(listener)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    result = dialog.execute()
+    if result == 1:
+        selected = {key: dialog.getControl(key).getState() == 1 for key, _ in items}
+        save_config(selected)
+    else:
+        selected = options.copy()
+
     dialog.dispose()
-    save_config(selected)
     return selected
 
 def fix_all(text, options, report_counts):
-    # ← ك و ي عربی
     if options.get("fix_k_y", True):
         c_before = text.count("ك")
         if c_before:
@@ -126,7 +169,6 @@ def fix_all(text, options, report_counts):
             report_counts["ي→ی"] += y_before
             text = text.replace("ي", "ی")
 
-    # ← اعداد
     if options.get("fix_numbers_en", True):
         text, n1 = re.subn(r"[0-9]", lambda m: en_to_fa_numbers(m.group(0)), text)
         report_counts["اعداد EN→FA"] += n1
@@ -134,7 +176,6 @@ def fix_all(text, options, report_counts):
         text, n2 = re.subn(r"[٠-٩]", lambda m: en_to_fa_numbers(m.group(0)), text)
         report_counts["اعداد عربی→FA"] += n2
 
-    # ← علائم
     if options.get("fix_punct", True):
         punct_map = {",": "،", ";": "؛", "?": "؟"}
         for en_punct, fa_punct in punct_map.items():
@@ -145,7 +186,6 @@ def fix_all(text, options, report_counts):
         text, n = re.subn(r"؟{2,}", "؟", text)
         report_counts["؟؟؟"] += n
 
-    # ← گیومه‌ها (اصلاح‌شده و دقیق‌تر)
     if options.get("fix_quotes", True) and any(q in text for q in ['"', "'", '“', '”', '‘', '’']):
         quote_chars = ['"', "'", '“', '”', '‘', '’']
         result, open_q, cnt = [], True, 0
@@ -161,12 +201,10 @@ def fix_all(text, options, report_counts):
         text = "".join(result)
         report_counts["گیومه"] += cnt // 2
 
-    # ← ه ی → هٔ
     if options.get("fix_he_ye", True):
         text, n = re.subn(r"(\S*ه)[\s\u200c]ی\b", lambda m: m.group(1) + "ٔ", text)
         report_counts["ه ی → هٔ"] += n
 
-    # ← نیم‌فاصله می/نمی
     if options.get("fix_me_nemi", True):
         VERB_SUFFIXES = ["م", "ی", "د", "یم", "ید", "ند"]
         pattern = r"(?<!\u200c)\b(ن?می)(?:\s+)?([\u0600-\u06FF]+)\b"
@@ -183,7 +221,6 @@ def fix_all(text, options, report_counts):
             return match.group(0)
         text = re.sub(pattern, replace_func, text)
 
-    # ← افعال پیشوندی
     if options.get("fix_prefix_verbs", True):
         prefixes = ["بر", "در", "فرو", "فرا", "باز", "وا", "ورا", "ور"]
         block_words = ["می", "نمی", "خواهد", "باید", "که"]
@@ -197,23 +234,16 @@ def fix_all(text, options, report_counts):
             return prefix + next_word
         text = re.sub(pattern, repl, text)
 
-    # ← نیم‌فاصله پسوندها
-    # ← نیم‌فاصله پسوندها (نسخهٔ اصلاح‌شده: فقط اگر فاصلهٔ کامل بین واژه و پسوند باشد)
     if options.get("fix_suffixes", True):
         suffixes = r"(تر(?:ین)?|ها|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
-
         def fix_suffixes_func(m):
             word = m.group(1)
             suffix = m.group(2)
-
-            # اگر بین واژه و پسوند فاصله‌ای نبوده (یعنی به هم چسبیده‌اند) اصلاح نکن
             if not re.search(r"\s", m.group(0)):
                 return m.group(0)
-
             one_letter_suffixes = ["م", "ت", "ش"]
             two_letter_suffixes = ["ام", "ات", "اش"]
             plural_suffixes = ["مان", "تان", "شان"]
-
             if suffix in one_letter_suffixes:
                 return word + suffix
             if suffix in two_letter_suffixes:
@@ -223,33 +253,28 @@ def fix_all(text, options, report_counts):
                     return word + ZWNJ + suffix
                 return word + suffix
             return word + ZWNJ + suffix
-
-        # فقط وقتی بین واژه و پسوند فاصلهٔ کامل وجود دارد عمل کند
         pattern_suffix = rf"(\S+)\s+{suffixes}\b"
         text, n2 = re.subn(pattern_suffix, fix_suffixes_func, text)
         report_counts["نیم‌فاصله پسوندها"] += n2
 
-
-    # ← بانک واژه‌ها
     if options.get("fix_dict", True):
         for wrong, correct in REPLACEMENTS.items():
             pat = r"\b" + re.escape(wrong) + r"\b"
             text, n = re.subn(pat, correct, text)
             report_counts["غلط‌های املایی (بانک)"] += n
 
-    # ← فاصله‌ها (اصلاح‌شده برای جلوگیری از حذف فاصله‌های بیرونی)
     if options.get("fix_spaces", True):
         corrections = [
-            (r"(?<=«)\s+", ""),      # فاصله بعد از گیومهٔ باز
-            (r"\s+(?=»)", ""),       # فاصله قبل از گیومهٔ بسته
-            (r"(?<=\()\s+", ""),     # فاصله بعد از (
-            (r"\s+(?=\))", ""),      # فاصله قبل از )
-            (r"(?<=\[)\s+", ""),     # فاصله بعد از [
-            (r"\s+(?=\])", ""),      # فاصله قبل از ]
-            (r"(?<=\{)\s+", ""),     # فاصله بعد از {
-            (r"\s+(?=\})", ""),      # فاصله قبل از }
-            (r"(?<=⟨)\s+", ""),      # فاصله بعد از ⟨
-            (r"\s+(?=⟩)", "")        # فاصله قبل از ⟩
+            (r"(?<=«)\s+", ""),
+            (r"\s+(?=»)", ""),
+            (r"(?<=\()\s+", ""),
+            (r"\s+(?=\))", ""),
+            (r"(?<=\[)\s+", ""),
+            (r"\s+(?=\])", ""),
+            (r"(?<=\{)\s+", ""),
+            (r"\s+(?=\})", ""),
+            (r"(?<=⟨)\s+", ""),
+            (r"\s+(?=⟩)", "")
         ]
         for pat, rep in corrections:
             text, n = re.subn(pat, rep, text)
@@ -260,7 +285,12 @@ def fix_all(text, options, report_counts):
         report_counts["فاصله قبل از علائم"] += n1
         text, n = re.subn(r"[ ]{2,}", " ", text)
         report_counts["فاصله‌های اضافی"] += n
-        # دقت: حذف text.strip() تا فاصله‌های آغاز/پایان portion حفظ شود
+
+    if options.get("fix_ellipsis", True):
+        def replace_ellipsis(match):
+            report_counts["سه‌نقطهٔ تعلیق"] += 1
+            return "…"
+        text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
 
     return text
 
@@ -279,16 +309,15 @@ def fix_text_full(event=None):
         "ك→ک", "ي→ی", "،؛؟", "گیومه", "اعداد EN→FA", "اعداد عربی→FA",
         "ه ی → هٔ", "؟؟؟", "فاصله قبل از علائم", "غلط‌های املایی (بانک)",
         "نیم‌فاصله پسوندها", "فاصله‌های اضافی", "فاصله قبل/بعد علائم",
-        "نیم‌فاصله می/نمی", "فعل پیشوندی"
+        "نیم‌فاصله می/نمی", "فعل پیشوندی", "سه‌نقطهٔ تعلیق"
     ]}
 
     text = doc.Text
     cursor = text.createTextCursor()
     cursor.gotoStart(False)
 
-    # ← پیمایش پاراگراف‌به‌پاراگراف با انتخاب ناحیه برای جایگزینی
     while True:
-        cursor.gotoEndOfParagraph(True)   # ← محدودهٔ پاراگراف را انتخاب کن
+        cursor.gotoEndOfParagraph(True)
         old_text = cursor.getString()
         if old_text:
             new_text = fix_all(old_text, options, report_counts)
@@ -297,7 +326,6 @@ def fix_text_full(event=None):
         if not cursor.gotoNextParagraph(False):
             break
 
-    # ← گزارش نهایی
     total = sum(report_counts.values())
     if total > 0:
         lines = [f"{k}: {en_to_fa_numbers(str(v))}" for k, v in report_counts.items() if v > 0]
