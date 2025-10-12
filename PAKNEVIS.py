@@ -7,8 +7,9 @@ from com.sun.star.awt import MessageBoxButtons as MBButtons
 from com.sun.star.awt.MessageBoxType import MESSAGEBOX
 from com.sun.star.awt import XTopWindowListener
 
-CONFIG_FILE = "/home/afshin/.config/libreoffice/4/user/Scripts/python/TextFixer.conf"
-REPLACEMENTS_FILE = "/home/afshin/.config/libreoffice/4/user/Scripts/python/DocumentList.xml"
+BASE_DIR = os.path.join(os.path.expanduser("~"), ".config", "libreoffice", "4", "user", "Scripts", "python")
+CONFIG_FILE = os.path.join(BASE_DIR, "TextFixer.conf")
+REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.xml")
 ZWNJ = "\u200c"
 
 def en_to_fa_numbers(text):
