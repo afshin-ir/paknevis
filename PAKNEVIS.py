@@ -1,9 +1,8 @@
 import os
 import re
-import xml.etree.ElementTree as ET
+import json
 import uno
 import unohelper
-import json
 from com.sun.star.awt import MessageBoxButtons as MBButtons
 from com.sun.star.awt.MessageBoxType import MESSAGEBOX
 from com.sun.star.awt import XTopWindowListener
@@ -22,16 +21,14 @@ def log_error(section, exc):
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(msg + "\n")
     except Exception:
-        pass  # اگر لاگ هم خطا داد، هیچ کاری نمی‌کنیم
+        pass
 
 
 def en_numbers_to_fa(text):
-    """تبدیل اعداد انگلیسی به فارسی"""
     return text.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
 
 def ar_numbers_to_fa(text):
-    """تبدیل اعداد عربی به فارسی"""
     return text.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "۰۱۲۳۴۵۶۷۸۹"))
 
 
@@ -191,145 +188,187 @@ def show_dialog(options):
         return options.copy()
 
 
-def fix_all(text, options, report_counts):
-    try:
-        if options.get("fix_k_y", True):
-            c_before = text.count("ك")
-            if c_before:
-                report_counts["ك→ک"] += c_before
-                text = text.replace("ك", "ک")
-            y_before = text.count("ي")
-            if y_before:
-                report_counts["ي→ی"] += y_before
-                text = text.replace("ي", "ی")
+# ==== توابع اصلاح متن جداگانه ====
+def fix_k_y(text, report_counts):
+    c_before = text.count("ك")
+    if c_before:
+        report_counts["ك→ک"] += c_before
+        text = text.replace("ك", "ک")
+    y_before = text.count("ي")
+    if y_before:
+        report_counts["ي→ی"] += y_before
+        text = text.replace("ي", "ی")
+    return text
 
-        if options.get("fix_numbers_en", True):
-            text, n1 = re.subn(r"[0-9]", lambda m: en_numbers_to_fa(m.group(0)), text)
-            report_counts["اعداد EN→FA"] += n1
-        if options.get("fix_numbers_ar", True):
-            text, n2 = re.subn(r"[٠-٩]", lambda m: ar_numbers_to_fa(m.group(0)), text)
-            report_counts["اعداد عربی→FA"] += n2
 
-        if options.get("fix_punct", True):
-            punct_map = {",": "،", ";": "؛", "?": "؟"}
-            for en_punct, fa_punct in punct_map.items():
-                n = text.count(en_punct)
-                if n:
-                    report_counts["،؛؟"] += n
-                    text = text.replace(en_punct, fa_punct)
-            text, n = re.subn(r"؟{2,}", "؟", text)
-            report_counts["؟؟؟"] += n
+def fix_numbers_en_func(text, report_counts):
+    text, n = re.subn(r"[0-9]", lambda m: en_numbers_to_fa(m.group(0)), text)
+    report_counts["اعداد EN→FA"] += n
+    return text
 
-        if options.get("fix_quotes", True) and any(q in text for q in ['"', "'", '“', '”', '‘', '’']):
-            quote_chars = ['"', "'", '“', '”', '‘', '’']
-            result, open_q, cnt = [], True, 0
-            for ch in text:
-                if ch in quote_chars:
-                    result.append("«" if open_q else "»")
-                    open_q = not open_q
-                    cnt += 1
-                else:
-                    result.append(ch)
-            if cnt % 2 == 1 and result and result[-1] == "«":
-                result[-1] = "»"
-            text = "".join(result)
-            report_counts["گیومه"] += cnt // 2
 
-        if options.get("fix_he_ye", True):
-            text, n = re.subn(r"(\S*ه)[\s\u200c]ی\b", lambda m: m.group(1) + "ٔ", text)
-            report_counts["ه ی → هٔ"] += n
+def fix_numbers_ar_func(text, report_counts):
+    text, n = re.subn(r"[٠-٩]", lambda m: ar_numbers_to_fa(m.group(0)), text)
+    report_counts["اعداد عربی→FA"] += n
+    return text
 
-        if options.get("fix_me_nemi", True):
-            VERB_SUFFIXES = ["م", "ی", "د", "یم", "ید", "ند"]
-            pattern = r"(?<!\u200c)\b(ن?می)(?:\s+)?([\u0600-\u06FF]+)\b"
-            def replace_func(match):
-                prefix = match.group(1)
-                word_part = match.group(2)
-                if any(word_part.endswith(suffix) for suffix in VERB_SUFFIXES):
-                    report_counts["نیم‌فاصله می/نمی"] += 1
-                    return prefix + ZWNJ + word_part
-                compound_verbs = ["شده", "رفت", "آمد", "خورد", "گشت", "شد"]
-                if word_part in compound_verbs:
-                    report_counts["نیم‌فاصله می/نمی"] += 1
-                    return prefix + ZWNJ + word_part
-                return match.group(0)
-            text = re.sub(pattern, replace_func, text)
 
-        if options.get("fix_prefix_verbs", True):
-            prefixes = ["بر", "در", "فرو", "فرا", "باز", "وا", "ورا", "ور"]
-            block_words = ["می", "نمی", "خواهد", "باید", "که"]
-            pattern = r"\b(" + "|".join(prefixes) + r")\s+([آ-ی]+)"
-            def repl(m):
-                prefix = m.group(1)
-                next_word = m.group(2)
-                if next_word in block_words or next_word not in simple_verbs:
-                    return m.group(0)
-                report_counts["فعل پیشوندی"] += 1
-                return prefix + next_word
-            text = re.sub(pattern, repl, text)
+def fix_punct(text, report_counts):
+    punct_map = {",": "،", ";": "؛", "?": "؟"}
+    for en_punct, fa_punct in punct_map.items():
+        n = text.count(en_punct)
+        if n:
+            report_counts["،؛؟"] += n
+            text = text.replace(en_punct, fa_punct)
+    text, n = re.subn(r"؟{2,}", "؟", text)
+    report_counts["؟؟؟"] += n
+    return text
 
-        if options.get("fix_suffixes", True):
-            suffixes = r"(تر(?:ین)?|ها|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
-            def fix_suffixes_func(m):
-                word = m.group(1)
-                suffix = m.group(2)
-                if not re.search(r"\s", m.group(0)):
-                    return m.group(0)
-                one_letter_suffixes = ["م", "ت", "ش"]
-                two_letter_suffixes = ["ام", "ات", "اش"]
-                plural_suffixes = ["مان", "تان", "شان"]
-                if suffix in one_letter_suffixes:
-                    return word + suffix
-                if suffix in two_letter_suffixes:
-                    return word + ZWNJ + suffix
-                if suffix in plural_suffixes:
-                    if word.endswith("ه"):
-                        return word + ZWNJ + suffix
-                    return word + suffix
+
+def fix_quotes(text, report_counts):
+    quote_chars = ['"', "'", '“', '”', '‘', '’']
+    if not any(q in text for q in quote_chars):
+        return text
+    result, open_q, cnt = [], True, 0
+    for ch in text:
+        if ch in quote_chars:
+            result.append("«" if open_q else "»")
+            open_q = not open_q
+            cnt += 1
+        else:
+            result.append(ch)
+    if cnt % 2 == 1 and result and result[-1] == "«":
+        result[-1] = "»"
+    text = "".join(result)
+    report_counts["گیومه"] += cnt // 2
+    return text
+
+
+def fix_he_ye(text, report_counts):
+    text, n = re.subn(r"(\S*ه)[\s\u200c]ی\b", lambda m: m.group(1) + "ٔ", text)
+    report_counts["ه ی → هٔ"] += n
+    return text
+
+
+def fix_me_nemi(text, report_counts):
+    VERB_SUFFIXES = ["م", "ی", "د", "یم", "ید", "ند"]
+    pattern = r"(?<!\u200c)\b(ن?می)(?:\s+)?([\u0600-\u06FF]+)\b"
+    def replace_func(match):
+        prefix = match.group(1)
+        word_part = match.group(2)
+        if any(word_part.endswith(suffix) for suffix in VERB_SUFFIXES):
+            report_counts["نیم‌فاصله می/نمی"] += 1
+            return prefix + ZWNJ + word_part
+        compound_verbs = ["شده", "رفت", "آمد", "خورد", "گشت", "شد"]
+        if word_part in compound_verbs:
+            report_counts["نیم‌فاصله می/نمی"] += 1
+            return prefix + ZWNJ + word_part
+        return match.group(0)
+    return re.sub(pattern, replace_func, text)
+
+
+def fix_prefix_verbs(text, report_counts):
+    prefixes = ["بر", "در", "فرو", "فرا", "باز", "وا", "ورا", "ور"]
+    block_words = ["می", "نمی", "خواهد", "باید", "که"]
+    pattern = r"\b(" + "|".join(prefixes) + r")\s+([آ-ی]+)"
+    def repl(m):
+        prefix = m.group(1)
+        next_word = m.group(2)
+        if next_word in block_words or next_word not in simple_verbs:
+            return m.group(0)
+        report_counts["فعل پیشوندی"] += 1
+        return prefix + next_word
+    return re.sub(pattern, repl, text)
+
+
+def fix_suffixes(text, report_counts):
+    suffixes = r"(تر(?:ین)?|ها|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
+    def fix_suffixes_func(m):
+        word = m.group(1)
+        suffix = m.group(2)
+        if not re.search(r"\s", m.group(0)):
+            return m.group(0)
+        one_letter_suffixes = ["م", "ت", "ش"]
+        two_letter_suffixes = ["ام", "ات", "اش"]
+        plural_suffixes = ["مان", "تان", "شان"]
+        if suffix in one_letter_suffixes:
+            return word + suffix
+        if suffix in two_letter_suffixes:
+            return word + ZWNJ + suffix
+        if suffix in plural_suffixes:
+            if word.endswith("ه"):
                 return word + ZWNJ + suffix
-            pattern_suffix = rf"(\S+)\s+{suffixes}\b"
-            text, n2 = re.subn(pattern_suffix, fix_suffixes_func, text)
-            report_counts["نیم‌فاصله پسوندها"] += n2
+            return word + suffix
+        return word + ZWNJ + suffix
+    pattern_suffix = rf"(\S+)\s+{suffixes}\b"
+    text, n2 = re.subn(pattern_suffix, fix_suffixes_func, text)
+    report_counts["نیم‌فاصله پسوندها"] += n2
+    return text
 
-        if options.get("fix_dict", True):
-            for wrong, correct in REPLACEMENTS.items():
-                pat = r"\b" + re.escape(wrong) + r"\b"
-                text, n = re.subn(pat, correct, text)
-                report_counts["غلط‌های املایی (بانک)"] += n
 
-        if options.get("fix_spaces", True):
-            corrections = [
-                (r"(?<=«)\s+", ""),
-                (r"\s+(?=»)", ""),
-                (r"(?<=\()\s+", ""),
-                (r"\s+(?=\))", ""),
-                (r"(?<=\[)\s+", ""),
-                (r"\s+(?=\])", ""),
-                (r"(?<=\{)\s+", ""),
-                (r"\s+(?=\})", ""),
-                (r"(?<=⟨)\s+", ""),
-                (r"\s+(?=⟩)", "")
-            ]
-            for pat, rep in corrections:
-                text, n = re.subn(pat, rep, text)
-                report_counts["فاصله قبل/بعد علائم"] += n
+def fix_dict(text, report_counts):
+    for wrong, correct in REPLACEMENTS.items():
+        pat = r"\b" + re.escape(wrong) + r"\b"
+        text, n = re.subn(pat, correct, text)
+        report_counts["غلط‌های املایی (بانک)"] += n
+    return text
 
-        if options.get("fix_extra_spaces", True):
-            text, n1 = re.subn(r"\s+([،؛؟.\)»\]\}\⟩])", r"\1", text)
-            report_counts["فاصله قبل از علائم"] += n1
-            text, n = re.subn(r"[ ]{2,}", " ", text)
-            report_counts["فاصله‌های اضافی"] += n
 
-        if options.get("fix_ellipsis", True):
-            def replace_ellipsis(match):
-                report_counts["سه‌نقطهٔ تعلیق"] += 1
-                return "…"
-            text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
+def fix_spaces(text, report_counts):
+    corrections = [
+        (r"(?<=«)\s+", ""),
+        (r"\s+(?=»)", ""),
+        (r"(?<=\()\s+", ""),
+        (r"\s+(?=\))", ""),
+        (r"(?<=\[)\s+", ""),
+        (r"\s+(?=\])", ""),
+        (r"(?<=\{)\s+", ""),
+        (r"\s+(?=\})", ""),
+        (r"(?<=⟨)\s+", ""),
+        (r"\s+(?=⟩)", "")
+    ]
+    for pat, rep in corrections:
+        text, n = re.subn(pat, rep, text)
+        report_counts["فاصله قبل/بعد علائم"] += n
+    return text
 
-        return text
-    except Exception as e:
-        log_error("fix_all", e)
-        return text
+
+def fix_extra_spaces(text, report_counts):
+    text, n1 = re.subn(r"\s+([،؛؟.\)»\]\}\⟩])", r"\1", text)
+    report_counts["فاصله قبل از علائم"] += n1
+    text, n = re.subn(r"[ ]{2,}", " ", text)
+    report_counts["فاصله‌های اضافی"] += n
+    return text
+
+
+def fix_ellipsis(text, report_counts):
+    def replace_ellipsis(match):
+        report_counts["سه‌نقطهٔ تعلیق"] += 1
+        return "…"
+    text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
+    return text
+
+
+# ==== fix_all با pipeline ====
+def fix_all(text, options, report_counts):
+    pipeline = []
+    if options.get("fix_k_y", True): pipeline.append(fix_k_y)
+    if options.get("fix_numbers_en", True): pipeline.append(fix_numbers_en_func)
+    if options.get("fix_numbers_ar", True): pipeline.append(fix_numbers_ar_func)
+    if options.get("fix_punct", True): pipeline.append(fix_punct)
+    if options.get("fix_quotes", True): pipeline.append(fix_quotes)
+    if options.get("fix_he_ye", True): pipeline.append(fix_he_ye)
+    if options.get("fix_me_nemi", True): pipeline.append(fix_me_nemi)
+    if options.get("fix_prefix_verbs", True): pipeline.append(fix_prefix_verbs)
+    if options.get("fix_suffixes", True): pipeline.append(fix_suffixes)
+    if options.get("fix_dict", True): pipeline.append(fix_dict)
+    if options.get("fix_spaces", True): pipeline.append(fix_spaces)
+    if options.get("fix_extra_spaces", True): pipeline.append(fix_extra_spaces)
+    if options.get("fix_ellipsis", True): pipeline.append(fix_ellipsis)
+
+    for func in pipeline:
+        text = func(text, report_counts)
+    return text
 
 
 def fix_text_full(event=None):
