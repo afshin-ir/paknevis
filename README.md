@@ -1,5 +1,6 @@
 # paknevis
-![01](https://github.com/user-attachments/assets/33fb339a-71ce-47b3-a218-aee76b7dec3c)
+![2025-10-14 07-55](https://github.com/user-attachments/assets/9f89079c-d4ad-42cc-a147-0b119d60eccc)
+
 ![2025-10-12 13-59](https://github.com/user-attachments/assets/658f3423-f0c3-4c06-87ee-85e818c907df)
 
 
