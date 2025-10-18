@@ -13,9 +13,7 @@ REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.json")
 ZWNJ = "\u200c"
 LOG_FILE = os.path.join(BASE_DIR, "TextFixer.log")
 
-
 def log_error(section, exc):
-    """ثبت خطا در فایل لاگ"""
     msg = f"[{section}] {type(exc).__name__}: {exc}"
     try:
         with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -23,14 +21,11 @@ def log_error(section, exc):
     except Exception:
         pass
 
-
 def en_numbers_to_fa(text):
     return text.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
-
 def ar_numbers_to_fa(text):
     return text.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "۰۱۲۳۴۵۶۷۸۹"))
-
 
 def load_replacements(path):
     try:
@@ -47,7 +42,6 @@ def load_replacements(path):
         log_error("load_replacements", e)
         return {}
 
-
 REPLACEMENTS = load_replacements(REPLACEMENTS_FILE)
 
 simple_verbs = [
@@ -56,7 +50,6 @@ simple_verbs = [
     "زدن", "شدن", "شستن", "شکستن", "شنیدن", "کردن", "گرفتن",
     "گشتن", "گفتن", "نوشتن", "یافتن",
 ]
-
 
 def load_config():
     defaults = {key: True for key in [
@@ -78,7 +71,6 @@ def load_config():
         log_error("load_config", e)
     return defaults
 
-
 def save_config(options):
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -86,7 +78,6 @@ def save_config(options):
                 f.write(f"{k}={'1' if v else '0'}\n")
     except Exception as e:
         log_error("save_config", e)
-
 
 class MyTopWindowListener(unohelper.Base, XTopWindowListener):
     def windowClosing(self, ev):
@@ -97,7 +88,6 @@ class MyTopWindowListener(unohelper.Base, XTopWindowListener):
     def windowClosed(self, ev): pass
     def windowActivated(self, ev): pass
     def windowDeactivated(self, ev): pass
-
 
 def show_dialog(options):
     try:
@@ -187,8 +177,7 @@ def show_dialog(options):
         log_error("show_dialog", e)
         return options.copy()
 
-
-# ==== توابع اصلاح متن جداگانه ====
+# ===== توابع اصلاح متن =====
 def fix_k_y(text, report_counts):
     c_before = text.count("ك")
     if c_before:
@@ -200,21 +189,19 @@ def fix_k_y(text, report_counts):
         text = text.replace("ي", "ی")
     return text
 
-
 def fix_numbers_en_func(text, report_counts):
     text, n = re.subn(r"[0-9]", lambda m: en_numbers_to_fa(m.group(0)), text)
     report_counts["اعداد EN→FA"] += n
     return text
-
 
 def fix_numbers_ar_func(text, report_counts):
     text, n = re.subn(r"[٠-٩]", lambda m: ar_numbers_to_fa(m.group(0)), text)
     report_counts["اعداد عربی→FA"] += n
     return text
 
-
 def fix_punct(text, report_counts):
-    punct_map = {",": "،", ";": "؛", "?": "؟"}
+    # , ; ? $ % → فارسی
+    punct_map = {",": "،", ";": "؛", "?": "؟", "$": "﷼", "%": "٪"}
     for en_punct, fa_punct in punct_map.items():
         n = text.count(en_punct)
         if n:
@@ -223,7 +210,6 @@ def fix_punct(text, report_counts):
     text, n = re.subn(r"؟{2,}", "؟", text)
     report_counts["؟؟؟"] += n
     return text
-
 
 def fix_quotes(text, report_counts):
     quote_chars = ['"', "'", '“', '”', '‘', '’']
@@ -243,12 +229,10 @@ def fix_quotes(text, report_counts):
     report_counts["گیومه"] += cnt // 2
     return text
 
-
 def fix_he_ye(text, report_counts):
     text, n = re.subn(r"(\S*ه)[\s\u200c]ی\b", lambda m: m.group(1) + "ٔ", text)
     report_counts["ه ی → هٔ"] += n
     return text
-
 
 def fix_me_nemi(text, report_counts):
     VERB_SUFFIXES = ["م", "ی", "د", "یم", "ید", "ند"]
@@ -266,7 +250,6 @@ def fix_me_nemi(text, report_counts):
         return match.group(0)
     return re.sub(pattern, replace_func, text)
 
-
 def fix_prefix_verbs(text, report_counts):
     prefixes = ["بر", "در", "فرو", "فرا", "باز", "وا", "ورا", "ور"]
     block_words = ["می", "نمی", "خواهد", "باید", "که"]
@@ -279,7 +262,6 @@ def fix_prefix_verbs(text, report_counts):
         report_counts["فعل پیشوندی"] += 1
         return prefix + next_word
     return re.sub(pattern, repl, text)
-
 
 def fix_suffixes(text, report_counts):
     suffixes = r"(تر(?:ین)?|ها|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
@@ -305,14 +287,12 @@ def fix_suffixes(text, report_counts):
     report_counts["نیم‌فاصله پسوندها"] += n2
     return text
 
-
 def fix_dict(text, report_counts):
     for wrong, correct in REPLACEMENTS.items():
         pat = r"\b" + re.escape(wrong) + r"\b"
         text, n = re.subn(pat, correct, text)
         report_counts["غلط‌های املایی (بانک)"] += n
     return text
-
 
 def fix_spaces(text, report_counts):
     corrections = [
@@ -332,7 +312,6 @@ def fix_spaces(text, report_counts):
         report_counts["فاصله قبل/بعد علائم"] += n
     return text
 
-
 def fix_extra_spaces(text, report_counts):
     text, n1 = re.subn(r"\s+([،؛؟.\)»\]\}\⟩])", r"\1", text)
     report_counts["فاصله قبل از علائم"] += n1
@@ -340,14 +319,12 @@ def fix_extra_spaces(text, report_counts):
     report_counts["فاصله‌های اضافی"] += n
     return text
 
-
 def fix_ellipsis(text, report_counts):
     def replace_ellipsis(match):
         report_counts["سه‌نقطهٔ تعلیق"] += 1
         return "…"
     text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
     return text
-
 
 # ==== fix_all با pipeline ====
 def fix_all(text, options, report_counts):
@@ -369,7 +346,6 @@ def fix_all(text, options, report_counts):
     for func in pipeline:
         text = func(text, report_counts)
     return text
-
 
 def fix_text_full(event=None):
     try:
