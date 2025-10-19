@@ -200,15 +200,22 @@ def fix_numbers_ar_func(text, report_counts):
     return text
 
 def fix_punct(text, report_counts):
-    # , ; ? $ % → فارسی
     punct_map = {",": "،", ";": "؛", "?": "؟", "$": "﷼", "%": "٪"}
     for en_punct, fa_punct in punct_map.items():
         n = text.count(en_punct)
         if n:
-            report_counts["،؛؟"] += n
+            if en_punct == ",": report_counts["ویرگول انگلیسی"] += n
+            elif en_punct == ";": report_counts["نقطه‌ویرگول انگلیسی"] += n
+            elif en_punct == "?": report_counts["علامت سؤال انگلیسی"] += n
+            elif en_punct == "%": report_counts["درصد انگلیسی"] += n
             text = text.replace(en_punct, fa_punct)
-    text, n = re.subn(r"؟{2,}", "؟", text)
-    report_counts["؟؟؟"] += n
+    
+    text, n_q = re.subn(r"؟{2,}", "؟", text)
+    report_counts["علامت پرسش تکراری"] += n_q
+
+    text, n_e = re.subn(r"!{2,}", "!", text)
+    report_counts["علامت تعجب تکراری"] += n_e
+
     return text
 
 def fix_quotes(text, report_counts):
@@ -360,10 +367,14 @@ def fix_text_full(event=None):
         options = show_dialog(options)
 
         report_counts = {k: 0 for k in [
-            "ك→ک", "ي→ی", "،؛؟", "گیومه", "اعداد EN→FA", "اعداد عربی→FA",
-            "ه ی → هٔ", "؟؟؟", "فاصله قبل از علائم", "غلط‌های املایی (بانک)",
+            "ك→ک", "ي→ی",
+            "ویرگول انگلیسی", "نقطه‌ویرگول انگلیسی", "علامت سؤال انگلیسی",
+            "گیومه", "اعداد EN→FA", "اعداد عربی→FA",
+            "ه ی → هٔ", "علامت پرسش تکراری", "علامت تعجب تکراری",
+            "فاصله قبل از علائم", "غلط‌های املایی (بانک)",
             "نیم‌فاصله پسوندها", "فاصله‌های اضافی", "فاصله قبل/بعد علائم",
-            "نیم‌فاصله می/نمی", "فعل پیشوندی", "سه‌نقطهٔ تعلیق"
+            "نیم‌فاصله می/نمی", "فعل پیشوندی", "سه‌نقطهٔ تعلیق",
+            "درصد انگلیسی"
         ]}
 
         text = doc.Text
@@ -382,7 +393,13 @@ def fix_text_full(event=None):
 
         total = sum(report_counts.values())
         if total > 0:
-            lines = [f"{k}: {en_numbers_to_fa(str(v))}" for k, v in report_counts.items() if v > 0]
+            lines = []
+            for k, v in report_counts.items():
+                if v > 0:
+                    if k == "درصد انگلیسی":
+                        lines.append(f"{k}: {en_numbers_to_fa(str(v))}")
+                    else:
+                        lines.append(f"{k}: {en_numbers_to_fa(str(v))}")
             report = f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n" + "\n".join(lines)
             try:
                 parent_win = doc.CurrentController.Frame.ContainerWindow
