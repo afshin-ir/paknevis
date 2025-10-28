@@ -354,6 +354,7 @@ def fix_all(text, options, report_counts):
         text = func(text, report_counts)
     return text
 
+# ==== نسخهٔ کامل تابع fix_text_full با نمایش پیام حتی وقتی هیچ اصلاحی انجام نشده ====
 def fix_text_full(event=None):
     try:
         ctx = uno.getComponentContext()
@@ -391,25 +392,27 @@ def fix_text_full(event=None):
             if not cursor.gotoNextParagraph(False):
                 break
 
+        # ===== نسخهٔ اصلاح‌شده برای گزارش =====
         total = sum(report_counts.values())
-        if total > 0:
-            lines = []
-            for k, v in report_counts.items():
-                if v > 0:
-                    if k == "درصد انگلیسی":
-                        lines.append(f"{k}: {en_numbers_to_fa(str(v))}")
-                    else:
-                        lines.append(f"{k}: {en_numbers_to_fa(str(v))}")
-            report = f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n" + "\n".join(lines)
-            try:
-                parent_win = doc.CurrentController.Frame.ContainerWindow
-                mb = parent_win.getToolkit().createMessageBox(
-                    parent_win, MESSAGEBOX, MBButtons.BUTTONS_OK,
-                    "گزارش اصلاح متن", report
+        try:
+            parent_win = doc.CurrentController.Frame.ContainerWindow
+            mb = parent_win.getToolkit().createMessageBox(
+                parent_win, MESSAGEBOX, MBButtons.BUTTONS_OK,
+                "گزارش اصلاح متن",
+                (
+                    f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n"
+                    + "\n".join(
+                        f"{k}: {en_numbers_to_fa(str(v))}"
+                        for k, v in report_counts.items() if v > 0
+                    )
+                    if total > 0
+                    else "هیچ اصلاحی لازم نبود."
                 )
-                mb.execute()
-            except Exception as e:
-                log_error("fix_text_full - MessageBox", e)
+            )
+            mb.execute()
+        except Exception as e:
+            log_error("fix_text_full - MessageBox", e)
+
     except Exception as e:
         log_error("fix_text_full", e)
 
