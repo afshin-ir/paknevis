@@ -103,17 +103,17 @@ def show_dialog(options):
         items = [
             ("fix_k_y", "تبدیل حرف ي و ك عربی به فارسی"),
             ("fix_punct", "تبدیل علائم سجاوندی انگلیسی به فارسی"),
-            ("fix_quotes", "فارسی‌سازی گیومه‌های انگلیسی"),
-            ("fix_numbers_en", "تبدیل اعداد انگلیسی به فارسی"),
-            ("fix_numbers_ar", "تبدیل اعداد عربی به فارسی"),
-            ("fix_he_ye", "اصلاح کسرهٔ اضافه به ترجیح فرهنگستان"),
-            ("fix_me_nemi", "اصلاح فاصله‌گذاری پیشوند افعال"),
-            ("fix_prefix_verbs", "اصلاح افعال پیشوندیِ ساده"),
-            ("fix_suffixes", "اصلاح فاصله‌گذاری پسوندها"),
-            ("fix_dict", "تصحیح غلط‌های املایی (بانک)"),
-            ("fix_spaces", "حذف فاصله قبل/بعد علائم"),
-            ("fix_extra_spaces", "حذف فاصله‌های اضافی بین واژه‌ها"),
-            ("fix_ellipsis", "اصلاح سه‌نقطهٔ تعلیق")
+            ("fix_quotes", "گیومهٔ انگلیسی"),
+            ("fix_numbers_en", "اعداد انگلیسی"),
+            ("fix_numbers_ar", "اعداد عربی"),
+            ("fix_he_ye", "کسرهٔ اضافه"),
+            ("fix_me_nemi", "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"),
+            ("fix_prefix_verbs", "فاصلهٔ بین اجزاء افعال پیشوندی"),
+            ("fix_suffixes", "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"),
+            ("fix_dict", "غلط‌های املایی (بانک)"),
+            ("fix_spaces", "فاصلهٔ داخلی علائم سجاوندی"),
+            ("fix_extra_spaces", "فاصلهٔ اضافه بین واژه‌ها"),
+            ("fix_ellipsis", "سه‌نقطهٔ تعلیق")
         ]
 
         item_height = 15
@@ -181,22 +181,22 @@ def show_dialog(options):
 def fix_k_y(text, report_counts):
     c_before = text.count("ك")
     if c_before:
-        report_counts["ك→ک"] += c_before
+        report_counts["کاف عربی"] += c_before
         text = text.replace("ك", "ک")
     y_before = text.count("ي")
     if y_before:
-        report_counts["ي→ی"] += y_before
+        report_counts["ی عربی"] += y_before
         text = text.replace("ي", "ی")
     return text
 
 def fix_numbers_en_func(text, report_counts):
     text, n = re.subn(r"[0-9]", lambda m: en_numbers_to_fa(m.group(0)), text)
-    report_counts["اعداد EN→FA"] += n
+    report_counts["اعداد انگلیسی"] += n
     return text
 
 def fix_numbers_ar_func(text, report_counts):
     text, n = re.subn(r"[٠-٩]", lambda m: ar_numbers_to_fa(m.group(0)), text)
-    report_counts["اعداد عربی→FA"] += n
+    report_counts["اعداد عربی"] += n
     return text
 
 def fix_punct(text, report_counts):
@@ -209,13 +209,10 @@ def fix_punct(text, report_counts):
             elif en_punct == "?": report_counts["علامت سؤال انگلیسی"] += n
             elif en_punct == "%": report_counts["درصد انگلیسی"] += n
             text = text.replace(en_punct, fa_punct)
-    
     text, n_q = re.subn(r"؟{2,}", "؟", text)
     report_counts["علامت پرسش تکراری"] += n_q
-
     text, n_e = re.subn(r"!{2,}", "!", text)
     report_counts["علامت تعجب تکراری"] += n_e
-
     return text
 
 def fix_quotes(text, report_counts):
@@ -233,12 +230,12 @@ def fix_quotes(text, report_counts):
     if cnt % 2 == 1 and result and result[-1] == "«":
         result[-1] = "»"
     text = "".join(result)
-    report_counts["گیومه"] += cnt // 2
+    report_counts["گیومهٔ انگلیسی"] += cnt // 2
     return text
 
 def fix_he_ye(text, report_counts):
     text, n = re.subn(r"(\S*ه)[\s\u200c]ی\b", lambda m: m.group(1) + "ٔ", text)
-    report_counts["ه ی → هٔ"] += n
+    report_counts["کسرهٔ اضافه"] += n
     return text
 
 def fix_me_nemi(text, report_counts):
@@ -248,11 +245,11 @@ def fix_me_nemi(text, report_counts):
         prefix = match.group(1)
         word_part = match.group(2)
         if any(word_part.endswith(suffix) for suffix in VERB_SUFFIXES):
-            report_counts["نیم‌فاصله می/نمی"] += 1
+            report_counts["فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"] += 1
             return prefix + ZWNJ + word_part
         compound_verbs = ["شده", "رفت", "آمد", "خورد", "گشت", "شد"]
         if word_part in compound_verbs:
-            report_counts["نیم‌فاصله می/نمی"] += 1
+            report_counts["فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"] += 1
             return prefix + ZWNJ + word_part
         return match.group(0)
     return re.sub(pattern, replace_func, text)
@@ -266,7 +263,7 @@ def fix_prefix_verbs(text, report_counts):
         next_word = m.group(2)
         if next_word in block_words or next_word not in simple_verbs:
             return m.group(0)
-        report_counts["فعل پیشوندی"] += 1
+        report_counts["فاصلهٔ بین اجزاء افعال پیشوندی"] += 1
         return prefix + next_word
     return re.sub(pattern, repl, text)
 
@@ -291,7 +288,7 @@ def fix_suffixes(text, report_counts):
         return word + ZWNJ + suffix
     pattern_suffix = rf"(\S+)\s+{suffixes}\b"
     text, n2 = re.subn(pattern_suffix, fix_suffixes_func, text)
-    report_counts["نیم‌فاصله پسوندها"] += n2
+    report_counts["فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"] += n2
     return text
 
 def fix_dict(text, report_counts):
@@ -316,14 +313,14 @@ def fix_spaces(text, report_counts):
     ]
     for pat, rep in corrections:
         text, n = re.subn(pat, rep, text)
-        report_counts["فاصله قبل/بعد علائم"] += n
+        report_counts["فاصلهٔ داخلی علائم سجاوندی"] += n
     return text
 
 def fix_extra_spaces(text, report_counts):
     text, n1 = re.subn(r"\s+([،؛؟.\)»\]\}\⟩])", r"\1", text)
-    report_counts["فاصله قبل از علائم"] += n1
+    report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n1
     text, n = re.subn(r"[ ]{2,}", " ", text)
-    report_counts["فاصله‌های اضافی"] += n
+    report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n
     return text
 
 def fix_ellipsis(text, report_counts):
@@ -333,7 +330,6 @@ def fix_ellipsis(text, report_counts):
     text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
     return text
 
-# ==== fix_all با pipeline ====
 def fix_all(text, options, report_counts):
     pipeline = []
     if options.get("fix_k_y", True): pipeline.append(fix_k_y)
@@ -349,12 +345,10 @@ def fix_all(text, options, report_counts):
     if options.get("fix_spaces", True): pipeline.append(fix_spaces)
     if options.get("fix_extra_spaces", True): pipeline.append(fix_extra_spaces)
     if options.get("fix_ellipsis", True): pipeline.append(fix_ellipsis)
-
     for func in pipeline:
         text = func(text, report_counts)
     return text
 
-# ==== نسخهٔ کامل تابع fix_text_full با نمایش پیام حتی وقتی هیچ اصلاحی انجام نشده ====
 def fix_text_full(event=None):
     try:
         ctx = uno.getComponentContext()
@@ -363,25 +357,21 @@ def fix_text_full(event=None):
         doc = desktop.getCurrentComponent()
         if not doc or not doc.supportsService("com.sun.star.text.TextDocument"):
             return
-
         options = load_config()
         options = show_dialog(options)
-
         report_counts = {k: 0 for k in [
-            "ك→ک", "ي→ی",
+            "کاف عربی", "ی عربی",
             "ویرگول انگلیسی", "نقطه‌ویرگول انگلیسی", "علامت سؤال انگلیسی",
-            "گیومه", "اعداد EN→FA", "اعداد عربی→FA",
-            "ه ی → هٔ", "علامت پرسش تکراری", "علامت تعجب تکراری",
-            "فاصله قبل از علائم", "غلط‌های املایی (بانک)",
-            "نیم‌فاصله پسوندها", "فاصله‌های اضافی", "فاصله قبل/بعد علائم",
-            "نیم‌فاصله می/نمی", "فعل پیشوندی", "سه‌نقطهٔ تعلیق",
-            "درصد انگلیسی"
+            "گیومهٔ انگلیسی", "اعداد انگلیسی", "اعداد عربی",
+            "درصد انگلیسی", "کسرهٔ اضافه", "علامت پرسش تکراری", "علامت تعجب تکراری",
+            "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)",
+            "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)", "فاصلهٔ اضافه بین واژه‌ها",
+            "فاصلهٔ داخلی علائم سجاوندی", "فاصلهٔ بین اجزاء افعال پیشوندی",
+            "غلط‌های املایی (بانک)", "سه‌نقطهٔ تعلیق"
         ]}
-
         text = doc.Text
         cursor = text.createTextCursor()
         cursor.gotoStart(False)
-
         while True:
             cursor.gotoEndOfParagraph(True)
             old_text = cursor.getString()
@@ -391,8 +381,6 @@ def fix_text_full(event=None):
                     cursor.setString(new_text)
             if not cursor.gotoNextParagraph(False):
                 break
-
-        # ===== نسخهٔ اصلاح‌شده برای گزارش =====
         total = sum(report_counts.values())
         try:
             parent_win = doc.CurrentController.Frame.ContainerWindow
@@ -412,7 +400,6 @@ def fix_text_full(event=None):
             mb.execute()
         except Exception as e:
             log_error("fix_text_full - MessageBox", e)
-
     except Exception as e:
         log_error("fix_text_full", e)
 
