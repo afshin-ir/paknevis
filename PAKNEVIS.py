@@ -55,7 +55,7 @@ def load_config():
     defaults = {key: True for key in [
         "fix_k_y", "fix_punct", "fix_quotes", "fix_numbers_en", "fix_numbers_ar",
         "fix_he_ye", "fix_me_nemi", "fix_prefix_verbs", "fix_suffixes", "fix_dict",
-        "fix_spaces", "fix_extra_spaces", "fix_ellipsis"
+        "fix_spaces", "fix_extra_spaces", "fix_ellipsis", "fix_fake_hyphens"
     ]}
     if not os.path.exists(CONFIG_FILE):
         return defaults
@@ -113,7 +113,8 @@ def show_dialog(options):
             ("fix_dict", "غلط‌های املایی (بانک)"),
             ("fix_spaces", "فاصلهٔ داخلی علائم سجاوندی"),
             ("fix_extra_spaces", "فاصلهٔ اضافه بین واژه‌ها"),
-            ("fix_ellipsis", "سه‌نقطهٔ تعلیق")
+            ("fix_ellipsis", "سه‌نقطهٔ تعلیق"),
+            ("fix_fake_hyphens", "تبدیل نیم‌فاصله‌های کاذب به نیم‌فاصلهٔ واقعی")
         ]
 
         item_height = 15
@@ -178,6 +179,7 @@ def show_dialog(options):
         return options.copy()
 
 # ===== توابع اصلاح متن =====
+
 def fix_k_y(text, report_counts):
     c_before = text.count("ك")
     if c_before:
@@ -330,6 +332,27 @@ def fix_ellipsis(text, report_counts):
     text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
     return text
 
+# ===== جایگزینی نیم‌فاصلهٔ کاذب =====
+def fix_fake_hyphens_with_zwnj(text, report_counts):
+    fake_chars = {
+        '\u00AD': "Soft Hyphen",
+        '\u00AC': "Not Sign",
+        '\u200F': "Right-to-Left Mark",
+        '\u2005': "Four-Per-Em Space",
+        '\uFEFF': "Zero Width No-Break Space",
+        '\u200B': "Zero Width Space",
+        '\u200D': "Zero Width Joiner",
+    }
+    total_count = 0
+    for ch in fake_chars:
+        n = text.count(ch)
+        if n:
+            text = text.replace(ch, ZWNJ)
+            total_count += n
+    report_counts["نیم‌فاصلهٔ کاذب"] += total_count
+    return text
+
+# ===== اجرای کل اصلاحات =====
 def fix_all(text, options, report_counts):
     pipeline = []
     if options.get("fix_k_y", True): pipeline.append(fix_k_y)
@@ -345,10 +368,12 @@ def fix_all(text, options, report_counts):
     if options.get("fix_spaces", True): pipeline.append(fix_spaces)
     if options.get("fix_extra_spaces", True): pipeline.append(fix_extra_spaces)
     if options.get("fix_ellipsis", True): pipeline.append(fix_ellipsis)
+    if options.get("fix_fake_hyphens", True): pipeline.append(fix_fake_hyphens_with_zwnj)
     for func in pipeline:
         text = func(text, report_counts)
     return text
 
+# ===== تابع اصلی برای اجرای اصلاح متن =====
 def fix_text_full(event=None):
     try:
         ctx = uno.getComponentContext()
@@ -367,7 +392,7 @@ def fix_text_full(event=None):
             "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)",
             "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)", "فاصلهٔ اضافه بین واژه‌ها",
             "فاصلهٔ داخلی علائم سجاوندی", "فاصلهٔ بین اجزاء افعال پیشوندی",
-            "غلط‌های املایی (بانک)", "سه‌نقطهٔ تعلیق"
+            "غلط‌های املایی (بانک)", "سه‌نقطهٔ تعلیق", "نیم‌فاصلهٔ کاذب"
         ]}
         text = doc.Text
         cursor = text.createTextCursor()
