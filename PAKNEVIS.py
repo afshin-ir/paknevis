@@ -112,6 +112,7 @@ def show_dialog(options):
             ("fix_suffixes", "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"),
             ("fix_dict", "غلط‌های املایی (بانک)"),
             ("fix_spaces", "فاصلهٔ داخلی علائم سجاوندی"),
+            ("fix_space_before_punct", "فاصلهٔ قبل از علائم سجاوندی (با استثناء)"),
             ("fix_extra_spaces", "فاصلهٔ اضافه بین واژه‌ها"),
             ("fix_ellipsis", "سه‌نقطهٔ تعلیق"),
             ("fix_fake_hyphens", "تبدیل نیم‌فاصله‌های کاذب به نیم‌فاصلهٔ واقعی")
@@ -122,7 +123,7 @@ def show_dialog(options):
         padding_bottom = 30
         btn_height = 15
         dialog_height = padding_top + len(items) * item_height + padding_bottom
-        dialog_width = 300
+        dialog_width = 320
         dialog_model.setPropertyValue("Width", dialog_width)
         dialog_model.setPropertyValue("Height", dialog_height)
         dialog_model.setPropertyValue("PositionX", 100)
@@ -133,7 +134,7 @@ def show_dialog(options):
             cb = dialog_model.createInstance("com.sun.star.awt.UnoControlCheckBoxModel")
             cb.setPropertyValue("PositionX", 10)
             cb.setPropertyValue("PositionY", y)
-            cb.setPropertyValue("Width", 250)
+            cb.setPropertyValue("Width", 300)
             cb.setPropertyValue("Height", 12)
             cb.setPropertyValue("Label", label)
             cb.setPropertyValue("State", 1 if options.get(key, True) else 0)
@@ -318,6 +319,24 @@ def fix_spaces(text, report_counts):
         report_counts["فاصلهٔ داخلی علائم سجاوندی"] += n
     return text
 
+def fix_space_before_punct(text, report_counts):
+    # حذف فاصلهٔ اضافی قبل از علائم سجاوندی، با استثناء (, [, «
+    def repl(match):
+        punct = match.group(1)
+        if punct in "([«":
+            if match.start() == 0:
+                return punct
+            elif text[match.start()-1] != " ":
+                return " " + punct
+            else:
+                return match.group(0)
+        else:
+            return punct
+    new_text, n = re.subn(r"\s*([،؛:؟!.»\]\)\}])", repl, text)
+    if n:
+        report_counts["فاصلهٔ قبل از علائم سجاوندی"] += n
+    return new_text
+
 def fix_extra_spaces(text, report_counts):
     text, n1 = re.subn(r"\s+([،؛؟.\)»\]\}\⟩])", r"\1", text)
     report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n1
@@ -332,7 +351,6 @@ def fix_ellipsis(text, report_counts):
     text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
     return text
 
-# ===== جایگزینی نیم‌فاصلهٔ کاذب =====
 def fix_fake_hyphens_with_zwnj(text, report_counts):
     fake_chars = {
         '\u00AD': "Soft Hyphen",
@@ -352,7 +370,6 @@ def fix_fake_hyphens_with_zwnj(text, report_counts):
     report_counts["نیم‌فاصلهٔ کاذب"] += total_count
     return text
 
-# ===== اجرای کل اصلاحات =====
 def fix_all(text, options, report_counts):
     pipeline = []
     if options.get("fix_k_y", True): pipeline.append(fix_k_y)
@@ -366,6 +383,7 @@ def fix_all(text, options, report_counts):
     if options.get("fix_suffixes", True): pipeline.append(fix_suffixes)
     if options.get("fix_dict", True): pipeline.append(fix_dict)
     if options.get("fix_spaces", True): pipeline.append(fix_spaces)
+    if options.get("fix_space_before_punct", True): pipeline.append(fix_space_before_punct)
     if options.get("fix_extra_spaces", True): pipeline.append(fix_extra_spaces)
     if options.get("fix_ellipsis", True): pipeline.append(fix_ellipsis)
     if options.get("fix_fake_hyphens", True): pipeline.append(fix_fake_hyphens_with_zwnj)
@@ -373,7 +391,6 @@ def fix_all(text, options, report_counts):
         text = func(text, report_counts)
     return text
 
-# ===== تابع اصلی برای اجرای اصلاح متن =====
 def fix_text_full(event=None):
     try:
         ctx = uno.getComponentContext()
@@ -390,8 +407,11 @@ def fix_text_full(event=None):
             "گیومهٔ انگلیسی", "اعداد انگلیسی", "اعداد عربی",
             "درصد انگلیسی", "کسرهٔ اضافه", "علامت پرسش تکراری", "علامت تعجب تکراری",
             "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)",
-            "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)", "فاصلهٔ اضافه بین واژه‌ها",
-            "فاصلهٔ داخلی علائم سجاوندی", "فاصلهٔ بین اجزاء افعال پیشوندی",
+            "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)",
+            "فاصلهٔ اضافه بین واژه‌ها",
+            "فاصلهٔ داخلی علائم سجاوندی",
+            "فاصلهٔ قبل از علائم سجاوندی",
+            "فاصلهٔ بین اجزاء افعال پیشوندی",
             "غلط‌های املایی (بانک)", "سه‌نقطهٔ تعلیق", "نیم‌فاصلهٔ کاذب"
         ]}
         text = doc.Text
