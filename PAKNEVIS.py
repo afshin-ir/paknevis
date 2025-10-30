@@ -6,13 +6,18 @@ import unohelper
 from com.sun.star.awt import MessageBoxButtons as MBButtons
 from com.sun.star.awt.MessageBoxType import MESSAGEBOX
 from com.sun.star.awt import XTopWindowListener
+import datetime
+from urllib.parse import unquote, urlparse
 
+ZWNJ = "\u200c"
+
+# مسیر فایل‌های تنظیمات و جایگذاری
 BASE_DIR = os.path.join(os.path.expanduser("~"), ".config", "libreoffice", "4", "user", "Scripts", "python")
 CONFIG_FILE = os.path.join(BASE_DIR, "TextFixer.conf")
 REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.json")
-ZWNJ = "\u200c"
 LOG_FILE = os.path.join(BASE_DIR, "TextFixer.log")
 
+# ---------- توابع کمکی ----------
 def log_error(section, exc):
     msg = f"[{section}] {type(exc).__name__}: {exc}"
     try:
@@ -51,13 +56,13 @@ simple_verbs = [
     "گشتن", "گفتن", "نوشتن", "یافتن",
 ]
 
+# ---------- بارگذاری و ذخیره تنظیمات ----------
 def load_config():
     defaults = {key: True for key in [
         "fix_k_y", "fix_punct", "fix_quotes", "fix_numbers_en", "fix_numbers_ar",
         "fix_he_ye", "fix_me_nemi", "fix_prefix_verbs", "fix_suffixes", "fix_spaces", 
         "fix_extra_spaces", "fix_ellipsis", "fix_fake_hyphens"
     ]}
-# تعداد واژه‌های این بانک فراوان است. بنابراین این گزینه به‌طور پیش‌فرض غیرفعال (تیک‌نخورده) است تا سرعت اجرای ماکرو را کند نکند.    
     defaults["fix_dict"] = False
     if not os.path.exists(CONFIG_FILE):
         return defaults
@@ -81,6 +86,7 @@ def save_config(options):
     except Exception as e:
         log_error("save_config", e)
 
+# ---------- کلاس و دیالوگ ----------
 class MyTopWindowListener(unohelper.Base, XTopWindowListener):
     def windowClosing(self, ev):
         try:
@@ -117,7 +123,7 @@ def show_dialog(options):
     ("fix_extra_spaces", "فاصلهٔ اضافه بین واژه‌ها"),
     ("fix_ellipsis", "سه‌نقطهٔ تعلیق"),
     ("fix_fake_hyphens", "تبدیل نیم‌فاصله‌های کاذب به نیم‌فاصلهٔ واقعی"),
-    ("fix_dict", "غلط‌های املایی (بانک)")  # ← آخرین گزینه
+    ("fix_dict", "غلط‌های املایی (بانک)")
 ]
 
         item_height = 15
@@ -181,8 +187,7 @@ def show_dialog(options):
         log_error("show_dialog", e)
         return options.copy()
 
-# ===== توابع اصلاح متن =====
-
+# ---------- توابع اصلاح متن ----------
 def fix_k_y(text, report_counts):
     c_before = text.count("ك")
     if c_before:
@@ -205,14 +210,14 @@ def fix_numbers_ar_func(text, report_counts):
     return text
 
 def fix_punct(text, report_counts):
-    punct_map = {",": "،", ";": "؛", "?": "؟", "$": "﷼", "%": "٪"}
+    punct_map = {",":"،",";":"؛","?":"؟","$":"﷼","%":"٪"}
     for en_punct, fa_punct in punct_map.items():
         n = text.count(en_punct)
         if n:
-            if en_punct == ",": report_counts["ویرگول انگلیسی"] += n
-            elif en_punct == ";": report_counts["نقطه‌ویرگول انگلیسی"] += n
-            elif en_punct == "?": report_counts["علامت سؤال انگلیسی"] += n
-            elif en_punct == "%": report_counts["درصد انگلیسی"] += n
+            if en_punct==",": report_counts["ویرگول انگلیسی"]+=n
+            elif en_punct==";": report_counts["نقطه‌ویرگول انگلیسی"]+=n
+            elif en_punct=="?": report_counts["علامت سؤال انگلیسی"]+=n
+            elif en_punct=="%": report_counts["درصد انگلیسی"]+=n
             text = text.replace(en_punct, fa_punct)
     text, n_q = re.subn(r"؟{2,}", "؟", text)
     report_counts["علامت پرسش تکراری"] += n_q
@@ -229,47 +234,47 @@ def fix_quotes(text, report_counts):
         if ch in quote_chars:
             result.append("«" if open_q else "»")
             open_q = not open_q
-            cnt += 1
+            cnt +=1
         else:
             result.append(ch)
-    if cnt % 2 == 1 and result and result[-1] == "«":
-        result[-1] = "»"
-    text = "".join(result)
-    report_counts["گیومهٔ انگلیسی"] += cnt // 2
+    if cnt%2==1 and result and result[-1]=="«":
+        result[-1]="»"
+    text="".join(result)
+    report_counts["گیومهٔ انگلیسی"] += cnt//2
     return text
 
 def fix_he_ye(text, report_counts):
-    text, n = re.subn(r"(\S*ه)[\s\u200c]ی\b", lambda m: m.group(1) + "ٔ", text)
+    text, n = re.subn(r"(\S*ه)[\s\u200c]ی\b", lambda m: m.group(1)+"ٔ", text)
     report_counts["کسرهٔ اضافه"] += n
     return text
 
 def fix_me_nemi(text, report_counts):
-    VERB_SUFFIXES = ["م", "ی", "د", "یم", "ید", "ند"]
+    VERB_SUFFIXES = ["م","ی","د","یم","ید","ند"]
     pattern = r"(?<!\u200c)\b(ن?می)(?:\s+)?([\u0600-\u06FF]+)\b"
     def replace_func(match):
-        prefix = match.group(1)
-        word_part = match.group(2)
-        if any(word_part.endswith(suffix) for suffix in VERB_SUFFIXES):
-            report_counts["فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"] += 1
-            return prefix + ZWNJ + word_part
-        compound_verbs = ["شده", "رفت", "آمد", "خورد", "گشت", "شد"]
+        prefix=match.group(1)
+        word_part=match.group(2)
+        if any(word_part.endswith(s) for s in VERB_SUFFIXES):
+            report_counts["فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"] +=1
+            return prefix+ZWNJ+word_part
+        compound_verbs=["شده","رفت","آمد","خورد","گشت","شد"]
         if word_part in compound_verbs:
-            report_counts["فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"] += 1
-            return prefix + ZWNJ + word_part
+            report_counts["فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"] +=1
+            return prefix+ZWNJ+word_part
         return match.group(0)
     return re.sub(pattern, replace_func, text)
 
 def fix_prefix_verbs(text, report_counts):
-    prefixes = ["بر", "در", "فرو", "فرا", "باز", "وا", "ورا", "ور"]
-    block_words = ["می", "نمی", "خواهد", "باید", "که"]
+    prefixes = ["بر","در","فرو","فرا","باز","وا","ورا","ور"]
+    block_words = ["می","نمی","خواهد","باید","که"]
     pattern = r"\b(" + "|".join(prefixes) + r")\s+([آ-ی]+)"
     def repl(m):
         prefix = m.group(1)
         next_word = m.group(2)
         if next_word in block_words or next_word not in simple_verbs:
             return m.group(0)
-        report_counts["فاصلهٔ بین اجزاء افعال پیشوندی"] += 1
-        return prefix + next_word
+        report_counts["فاصلهٔ بین اجزاء افعال پیشوندی"] +=1
+        return prefix+next_word
     return re.sub(pattern, repl, text)
 
 def fix_suffixes(text, report_counts):
@@ -279,18 +284,18 @@ def fix_suffixes(text, report_counts):
         suffix = m.group(2)
         if not re.search(r"\s", m.group(0)):
             return m.group(0)
-        one_letter_suffixes = ["م", "ت", "ش"]
-        two_letter_suffixes = ["ام", "ات", "اش"]
-        plural_suffixes = ["مان", "تان", "شان"]
+        one_letter_suffixes = ["م","ت","ش"]
+        two_letter_suffixes = ["ام","ات","اش"]
+        plural_suffixes = ["مان","تان","شان"]
         if suffix in one_letter_suffixes:
-            return word + suffix
+            return word+suffix
         if suffix in two_letter_suffixes:
-            return word + ZWNJ + suffix
+            return word+ZWNJ+suffix
         if suffix in plural_suffixes:
             if word.endswith("ه"):
-                return word + ZWNJ + suffix
-            return word + suffix
-        return word + ZWNJ + suffix
+                return word+ZWNJ+suffix
+            return word+suffix
+        return word+ZWNJ+suffix
     pattern_suffix = rf"(\S+)\s+{suffixes}\b"
     text, n2 = re.subn(pattern_suffix, fix_suffixes_func, text)
     report_counts["فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"] += n2
@@ -298,23 +303,23 @@ def fix_suffixes(text, report_counts):
 
 def fix_dict(text, report_counts):
     for wrong, correct in REPLACEMENTS.items():
-        pat = r"\b" + re.escape(wrong) + r"\b"
+        pat = r"\b"+re.escape(wrong)+r"\b"
         text, n = re.subn(pat, correct, text)
         report_counts["غلط‌های املایی (بانک)"] += n
     return text
 
 def fix_spaces(text, report_counts):
     corrections = [
-        (r"(?<=«)\s+", ""),
+        (r"(?<=«)\s+",""),
         (r"\s+(?=»)", ""),
-        (r"(?<=\()\s+", ""),
-        (r"\s+(?=\))", ""),
-        (r"(?<=\[)\s+", ""),
-        (r"\s+(?=\])", ""),
-        (r"(?<=\{)\s+", ""),
-        (r"\s+(?=\})", ""),
-        (r"(?<=⟨)\s+", ""),
-        (r"\s+(?=⟩)", "")
+        (r"(?<=\()\s+",""),
+        (r"\s+(?=\))",""),
+        (r"(?<=\[)\s+",""),
+        (r"\s+(?=\])",""),
+        (r"(?<=\{)\s+",""),
+        (r"\s+(?=\})",""),
+        (r"(?<=⟨)\s+",""),
+        (r"\s+(?=⟩)","")
     ]
     for pat, rep in corrections:
         text, n = re.subn(pat, rep, text)
@@ -322,14 +327,13 @@ def fix_spaces(text, report_counts):
     return text
 
 def fix_space_before_punct(text, report_counts):
-    # حذف فاصلهٔ اضافی قبل از علائم سجاوندی، با استثناء (, [, «
     def repl(match):
         punct = match.group(1)
         if punct in "([«":
-            if match.start() == 0:
+            if match.start()==0:
                 return punct
-            elif text[match.start()-1] != " ":
-                return " " + punct
+            elif text[match.start()-1]!=" ":
+                return " "+punct
             else:
                 return match.group(0)
         else:
@@ -342,32 +346,24 @@ def fix_space_before_punct(text, report_counts):
 def fix_extra_spaces(text, report_counts):
     text, n1 = re.subn(r"\s+([،؛؟.\)»\]\}\⟩])", r"\1", text)
     report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n1
-    text, n = re.subn(r"[ ]{2,}", " ", text)
-    report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n
+    text, n2 = re.subn(r"[ ]{2,}", " ", text)
+    report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n2
     return text
 
 def fix_ellipsis(text, report_counts):
     def replace_ellipsis(match):
-        report_counts["سه‌نقطهٔ تعلیق"] += 1
+        report_counts["سه‌نقطهٔ تعلیق"] +=1
         return "…"
     text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
     return text
 
 def fix_fake_hyphens_with_zwnj(text, report_counts):
-    fake_chars = {
-        '\u00AD': "Soft Hyphen",
-        '\u00AC': "Not Sign",
-        '\u200F': "Right-to-Left Mark",
-        '\u2005': "Four-Per-Em Space",
-        '\uFEFF': "Zero Width No-Break Space",
-        '\u200B': "Zero Width Space",
-        '\u200D': "Zero Width Joiner",
-    }
+    fake_chars = ['\u00AD','\u00AC','\u200F','\u2005','\uFEFF','\u200B','\u200D']
     total_count = 0
     for ch in fake_chars:
         n = text.count(ch)
         if n:
-            text = text.replace(ch, ZWNJ)
+            text = text.replace(ch,ZWNJ)
             total_count += n
     report_counts["نیم‌فاصلهٔ کاذب"] += total_count
     return text
@@ -393,6 +389,7 @@ def fix_all(text, options, report_counts):
         text = func(text, report_counts)
     return text
 
+# ---------- ماکروی اصلی ----------
 def fix_text_full(event=None):
     try:
         ctx = uno.getComponentContext()
@@ -403,18 +400,13 @@ def fix_text_full(event=None):
             return
         options = load_config()
         options = show_dialog(options)
-        report_counts = {k: 0 for k in [
-            "کاف عربی", "ی عربی",
-            "ویرگول انگلیسی", "نقطه‌ویرگول انگلیسی", "علامت سؤال انگلیسی",
-            "گیومهٔ انگلیسی", "اعداد انگلیسی", "اعداد عربی",
-            "درصد انگلیسی", "کسرهٔ اضافه", "علامت پرسش تکراری", "علامت تعجب تکراری",
-            "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)",
-            "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)",
-            "فاصلهٔ اضافه بین واژه‌ها",
-            "فاصلهٔ داخلی علائم سجاوندی",
-            "فاصلهٔ قبل از علائم سجاوندی",
-            "فاصلهٔ بین اجزاء افعال پیشوندی",
-            "غلط‌های املایی (بانک)", "سه‌نقطهٔ تعلیق", "نیم‌فاصلهٔ کاذب"
+        report_counts = {k:0 for k in [
+            "کاف عربی","ی عربی","ویرگول انگلیسی","نقطه‌ویرگول انگلیسی","علامت سؤال انگلیسی",
+            "گیومهٔ انگلیسی","اعداد انگلیسی","اعداد عربی","درصد انگلیسی","کسرهٔ اضافه",
+            "علامت پرسش تکراری","علامت تعجب تکراری",
+            "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)","فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)",
+            "فاصلهٔ اضافه بین واژه‌ها","فاصلهٔ داخلی علائم سجاوندی","فاصلهٔ قبل از علائم سجاوندی",
+            "فاصلهٔ بین اجزاء افعال پیشوندی","غلط‌های املایی (بانک)","سه‌نقطهٔ تعلیق","نیم‌فاصلهٔ کاذب"
         ]}
         text = doc.Text
         cursor = text.createTextCursor()
@@ -428,6 +420,8 @@ def fix_text_full(event=None):
                     cursor.setString(new_text)
             if not cursor.gotoNextParagraph(False):
                 break
+
+        # مجموع اصلاحات
         total = sum(report_counts.values())
         try:
             parent_win = doc.CurrentController.Frame.ContainerWindow
@@ -436,17 +430,35 @@ def fix_text_full(event=None):
                 "گزارش اصلاح متن",
                 (
                     f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n"
-                    + "\n".join(
-                        f"{k}: {en_numbers_to_fa(str(v))}"
-                        for k, v in report_counts.items() if v > 0
-                    )
-                    if total > 0
-                    else "هیچ اصلاحی لازم نبود."
+                    + "\n".join(f"{k}: {en_numbers_to_fa(str(v))}" for k,v in report_counts.items() if v>0)
+                    if total>0 else "هیچ اصلاحی لازم نبود."
                 )
             )
             mb.execute()
         except Exception as e:
             log_error("fix_text_full - MessageBox", e)
+
+        # ---------- ایجاد فایل گزارش ----------
+        try:
+            url = doc.URL
+            if not url:
+                folder = os.path.expanduser("~")
+                filename = "Untitled"
+            else:
+                folder = os.path.dirname(unquote(urlparse(url).path))
+                filename = os.path.basename(unquote(urlparse(url).path))
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            report_filename = f"Paknevis Report [{now}].txt"
+            report_path = os.path.join(folder, report_filename)
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(f"نام فایل: {filename}\n\n")
+                f.write(f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n")
+                for k,v in report_counts.items():
+                    if v>0:
+                        f.write(f"{k}: {en_numbers_to_fa(str(v))}\n")
+        except Exception as e:
+            log_error("fix_text_full - write report file", e)
+
     except Exception as e:
         log_error("fix_text_full", e)
 
