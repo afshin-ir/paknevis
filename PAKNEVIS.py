@@ -54,9 +54,11 @@ simple_verbs = [
 def load_config():
     defaults = {key: True for key in [
         "fix_k_y", "fix_punct", "fix_quotes", "fix_numbers_en", "fix_numbers_ar",
-        "fix_he_ye", "fix_me_nemi", "fix_prefix_verbs", "fix_suffixes", "fix_dict",
-        "fix_spaces", "fix_extra_spaces", "fix_ellipsis", "fix_fake_hyphens"
+        "fix_he_ye", "fix_me_nemi", "fix_prefix_verbs", "fix_suffixes", "fix_spaces", 
+        "fix_extra_spaces", "fix_ellipsis", "fix_fake_hyphens"
     ]}
+# تعداد واژه‌های این بانک فراوان است. بنابراین این گزینه به‌طور پیش‌فرض غیرفعال (تیک‌نخورده) است تا سرعت اجرای ماکرو را کند نکند.    
+    defaults["fix_dict"] = False
     if not os.path.exists(CONFIG_FILE):
         return defaults
     try:
@@ -101,22 +103,22 @@ def show_dialog(options):
         dialog.setTitle("گزینش اصلاح‌ها")
 
         items = [
-            ("fix_k_y", "تبدیل حرف ي و ك عربی به فارسی"),
-            ("fix_punct", "تبدیل علائم سجاوندی انگلیسی به فارسی"),
-            ("fix_quotes", "گیومهٔ انگلیسی"),
-            ("fix_numbers_en", "اعداد انگلیسی"),
-            ("fix_numbers_ar", "اعداد عربی"),
-            ("fix_he_ye", "کسرهٔ اضافه"),
-            ("fix_me_nemi", "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"),
-            ("fix_prefix_verbs", "فاصلهٔ بین اجزاء افعال پیشوندی"),
-            ("fix_suffixes", "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"),
-            ("fix_dict", "غلط‌های املایی (بانک)"),
-            ("fix_spaces", "فاصلهٔ داخلی علائم سجاوندی"),
-            ("fix_space_before_punct", "فاصلهٔ قبل از علائم سجاوندی (با استثناء)"),
-            ("fix_extra_spaces", "فاصلهٔ اضافه بین واژه‌ها"),
-            ("fix_ellipsis", "سه‌نقطهٔ تعلیق"),
-            ("fix_fake_hyphens", "تبدیل نیم‌فاصله‌های کاذب به نیم‌فاصلهٔ واقعی")
-        ]
+    ("fix_k_y", "تبدیل حرف ي و ك عربی به فارسی"),
+    ("fix_punct", "تبدیل علائم سجاوندی انگلیسی به فارسی"),
+    ("fix_quotes", "گیومهٔ انگلیسی"),
+    ("fix_numbers_en", "اعداد انگلیسی"),
+    ("fix_numbers_ar", "اعداد عربی"),
+    ("fix_he_ye", "کسرهٔ اضافه"),
+    ("fix_me_nemi", "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"),
+    ("fix_prefix_verbs", "فاصلهٔ بین اجزاء افعال پیشوندی"),
+    ("fix_suffixes", "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"),
+    ("fix_spaces", "فاصلهٔ داخلی علائم سجاوندی"),
+    ("fix_space_before_punct", "فاصلهٔ قبل از علائم سجاوندی (با استثناء)"),
+    ("fix_extra_spaces", "فاصلهٔ اضافه بین واژه‌ها"),
+    ("fix_ellipsis", "سه‌نقطهٔ تعلیق"),
+    ("fix_fake_hyphens", "تبدیل نیم‌فاصله‌های کاذب به نیم‌فاصلهٔ واقعی"),
+    ("fix_dict", "غلط‌های املایی (بانک)")  # ← آخرین گزینه
+]
 
         item_height = 15
         padding_top = 10
