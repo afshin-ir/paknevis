@@ -322,11 +322,20 @@ def fix_suffixes(text, report_counts):
 
 # تصحیح غلط‌های املایی با کمک گرفتن از بانک کلمات
 def fix_dict(text, report_counts):
-    for wrong, correct in REPLACEMENTS.items():
-        pat = r"\b"+re.escape(wrong)+r"\b"
-        text, n = re.subn(pat, correct, text)
-        report_counts["غلط‌های املایی (بانک)"] += n
+    if not REPLACEMENTS:
+        return text
+
+    # ساخت یک regex ترکیبی از همه واژه‌های غلط
+    pattern = r"\b(" + "|".join(map(re.escape, REPLACEMENTS.keys())) + r")\b"
+
+    def replace_match(m):
+        correct = REPLACEMENTS[m.group(0)]
+        report_counts["غلط‌های املایی (بانک)"] += 1
+        return correct
+
+    text = re.sub(pattern, replace_match, text)
     return text
+
 
 # اصلاح فاصلهٔ داخلی علائم سجاوندی
 def fix_spaces(text, report_counts):
