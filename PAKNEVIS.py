@@ -18,6 +18,7 @@ REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.json")
 LOG_FILE = os.path.join(BASE_DIR, "TextFixer.log")
 
 # ---------- توابع کمکی ----------
+# ثبت خطاها در فایل لاگ
 def log_error(section, exc):
     msg = f"[{section}] {type(exc).__name__}: {exc}"
     try:
@@ -26,12 +27,15 @@ def log_error(section, exc):
     except Exception:
         pass
 
+# تبدیل اعداد انگلیسی به فارسی
 def en_numbers_to_fa(text):
     return text.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
+# تبدیل اعداد عربی به فارسی
 def ar_numbers_to_fa(text):
     return text.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "۰۱۲۳۴۵۶۷۸۹"))
 
+# بارگذاری فهرست جایگزینی واژه‌ها از فایل JSON
 def load_replacements(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -49,6 +53,7 @@ def load_replacements(path):
 
 REPLACEMENTS = load_replacements(REPLACEMENTS_FILE)
 
+# فهرست افعال ساده برای پردازش پیشوندها
 simple_verbs = [
     "آمدن", "آوردن", "انداختن", "بردن", "بستن", "بودن", "خواستن",
     "خواندن", "خوردن", "دادن", "داشتن", "دانستن", "دیدن", "رفتن",
@@ -57,6 +62,7 @@ simple_verbs = [
 ]
 
 # ---------- بارگذاری و ذخیره تنظیمات ----------
+# بارگذاری تنظیمات کاربر از فایل یا استفاده از پیش‌فرض‌ها
 def load_config():
     defaults = {key: True for key in [
         "fix_k_y", "fix_punct", "fix_quotes", "fix_numbers_en", "fix_numbers_ar",
@@ -78,6 +84,7 @@ def load_config():
         log_error("load_config", e)
     return defaults
 
+# ذخیره تنظیمات کاربر در فایل
 def save_config(options):
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -87,6 +94,7 @@ def save_config(options):
         log_error("save_config", e)
 
 # ---------- کلاس و دیالوگ ----------
+# Listener برای بستن ایمن دیالوگ
 class MyTopWindowListener(unohelper.Base, XTopWindowListener):
     def windowClosing(self, ev):
         try:
@@ -97,6 +105,7 @@ class MyTopWindowListener(unohelper.Base, XTopWindowListener):
     def windowActivated(self, ev): pass
     def windowDeactivated(self, ev): pass
 
+# نمایش پنجرهٔ «گزینش اصلاح‌ها» به کاربر
 def show_dialog(options):
     try:
         ctx = uno.getComponentContext()
@@ -126,6 +135,7 @@ def show_dialog(options):
     ("fix_dict", "غلط‌های املایی (بانک)")
 ]
 
+        # تنظیم ارتفاع و موقعیت چک‌باکس‌ها و دکمه
         item_height = 15
         padding_top = 10
         padding_bottom = 30
@@ -188,6 +198,7 @@ def show_dialog(options):
         return options.copy()
 
 # ---------- توابع اصلاح متن ----------
+# «ك» و «ي» عربی را به «ک» و «ی» فارسی تبدیل می‌کند
 def fix_k_y(text, report_counts):
     c_before = text.count("ك")
     if c_before:
@@ -199,16 +210,19 @@ def fix_k_y(text, report_counts):
         text = text.replace("ي", "ی")
     return text
 
+# تبدیل اعداد انگلیسی به فارسی
 def fix_numbers_en_func(text, report_counts):
     text, n = re.subn(r"[0-9]", lambda m: en_numbers_to_fa(m.group(0)), text)
     report_counts["اعداد انگلیسی"] += n
     return text
 
+# تبدیل اعداد عربی به فارسی
 def fix_numbers_ar_func(text, report_counts):
     text, n = re.subn(r"[٠-٩]", lambda m: ar_numbers_to_fa(m.group(0)), text)
     report_counts["اعداد عربی"] += n
     return text
 
+# اصلاح علائم سجاوندی انگلیسی به فارسی و حذف تکراری‌ها
 def fix_punct(text, report_counts):
     punct_map = {",":"،",";":"؛","?":"؟","$":"﷼","%":"٪"}
     for en_punct, fa_punct in punct_map.items():
@@ -225,6 +239,7 @@ def fix_punct(text, report_counts):
     report_counts["علامت تعجب تکراری"] += n_e
     return text
 
+# اصلاح گیومه‌های انگلیسی به «» فارسی
 def fix_quotes(text, report_counts):
     quote_chars = ['"', "'", '“', '”', '‘', '’']
     if not any(q in text for q in quote_chars):
@@ -243,11 +258,13 @@ def fix_quotes(text, report_counts):
     report_counts["گیومهٔ انگلیسی"] += cnt//2
     return text
 
+# اصلاح کسرهٔ اضافه بعد از «هٔ»
 def fix_he_ye(text, report_counts):
     text, n = re.subn(r"(\S*ه)[\s\u200c]ی\b", lambda m: m.group(1)+"ٔ", text)
     report_counts["کسرهٔ اضافه"] += n
     return text
 
+# افزودن نیم‌فاصله قبل از پیشوندهای می/نمی
 def fix_me_nemi(text, report_counts):
     VERB_SUFFIXES = ["م","ی","د","یم","ید","ند"]
     pattern = r"(?<!\u200c)\b(ن?می)(?:\s+)?([\u0600-\u06FF]+)\b"
@@ -264,6 +281,7 @@ def fix_me_nemi(text, report_counts):
         return match.group(0)
     return re.sub(pattern, replace_func, text)
 
+# حذف فاصلهٔ اضافی بین پیشوندها و افعال
 def fix_prefix_verbs(text, report_counts):
     prefixes = ["بر","در","فرو","فرا","باز","وا","ورا","ور"]
     block_words = ["می","نمی","خواهد","باید","که"]
@@ -277,6 +295,7 @@ def fix_prefix_verbs(text, report_counts):
         return prefix+next_word
     return re.sub(pattern, repl, text)
 
+# اصلاح فاصلهٔ قبل از ضمایر ملکی و افزودن نیم‌فاصله در صورت نیاز
 def fix_suffixes(text, report_counts):
     suffixes = r"(تر(?:ین)?|ها|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
     def fix_suffixes_func(m):
@@ -301,6 +320,7 @@ def fix_suffixes(text, report_counts):
     report_counts["فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"] += n2
     return text
 
+# تصحیح غلط‌های املایی با کمک گرفتن از بانک کلمات
 def fix_dict(text, report_counts):
     for wrong, correct in REPLACEMENTS.items():
         pat = r"\b"+re.escape(wrong)+r"\b"
@@ -308,6 +328,7 @@ def fix_dict(text, report_counts):
         report_counts["غلط‌های املایی (بانک)"] += n
     return text
 
+# اصلاح فاصلهٔ داخلی علائم سجاوندی
 def fix_spaces(text, report_counts):
     corrections = [
         (r"(?<=«)\s+",""),
@@ -326,6 +347,7 @@ def fix_spaces(text, report_counts):
         report_counts["فاصلهٔ داخلی علائم سجاوندی"] += n
     return text
 
+# اصلاح فاصلهٔ قبل از علائم سجاوندی با استثناء
 def fix_space_before_punct(text, report_counts):
     def repl(match):
         punct = match.group(1)
@@ -343,6 +365,7 @@ def fix_space_before_punct(text, report_counts):
         report_counts["فاصلهٔ قبل از علائم سجاوندی"] += n
     return new_text
 
+# حذف فاصله‌های اضافه بین واژه‌ها
 def fix_extra_spaces(text, report_counts):
     text, n1 = re.subn(r"\s+([،؛؟.\)»\]\}\⟩])", r"\1", text)
     report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n1
@@ -350,6 +373,7 @@ def fix_extra_spaces(text, report_counts):
     report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n2
     return text
 
+# جایگزینی سه‌نقطهٔ پشت سر هم با «…»
 def fix_ellipsis(text, report_counts):
     def replace_ellipsis(match):
         report_counts["سه‌نقطهٔ تعلیق"] +=1
@@ -357,6 +381,7 @@ def fix_ellipsis(text, report_counts):
     text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
     return text
 
+# تبدیل نیم‌فاصله‌های کاذب به نیم‌فاصلهٔ واقعی
 def fix_fake_hyphens_with_zwnj(text, report_counts):
     fake_chars = ['\u00AD','\u00AC','\u200F','\u2005','\uFEFF','\u200B','\u200D']
     total_count = 0
@@ -368,6 +393,7 @@ def fix_fake_hyphens_with_zwnj(text, report_counts):
     report_counts["نیم‌فاصلهٔ کاذب"] += total_count
     return text
 
+# اجرای همهٔ اصلاحات به ترتیب روی متن
 def fix_all(text, options, report_counts):
     pipeline = []
     if options.get("fix_k_y", True): pipeline.append(fix_k_y)
@@ -390,6 +416,7 @@ def fix_all(text, options, report_counts):
     return text
 
 # ---------- ماکروی اصلی ----------
+# اجرای ماکروی کامل روی کل سند، نمایش گزارش و ذخیره فایل گزارش
 def fix_text_full(event=None):
     try:
         ctx = uno.getComponentContext()
@@ -421,7 +448,7 @@ def fix_text_full(event=None):
             if not cursor.gotoNextParagraph(False):
                 break
 
-        # مجموع اصلاحات
+        # مجموع اصلاحات و نمایش پنجرهٔ «گزارش اصلاح متن»
         total = sum(report_counts.values())
         try:
             parent_win = doc.CurrentController.Frame.ContainerWindow
