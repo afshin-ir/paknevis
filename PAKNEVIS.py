@@ -61,7 +61,6 @@ simple_verbs = [
     "گشتن", "گفتن", "نوشتن", "یافتن",
 ]
 
-# ---------- بارگذاری و ذخیره تنظیمات ----------
 # بارگذاری تنظیمات کاربر از فایل یا استفاده از پیش‌فرض‌ها
 def load_config():
     defaults = {key: True for key in [
@@ -124,7 +123,7 @@ def show_dialog(options):
     ("fix_numbers_en", "اعداد انگلیسی"),
     ("fix_numbers_ar", "اعداد عربی"),
     ("fix_he_ye", "کسرهٔ اضافه"),
-    ("fix_me_nemi", "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"),
+    ("fix_me_nemi", "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"),
     ("fix_prefix_verbs", "فاصلهٔ بین اجزاء افعال پیشوندی"),
     ("fix_suffixes", "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"),
     ("fix_spaces", "فاصلهٔ داخلی علائم سجاوندی"),
@@ -264,7 +263,7 @@ def fix_he_ye(text, report_counts):
     report_counts["کسرهٔ اضافه"] += n
     return text
 
-# افزودن نیم‌فاصله قبل از پیشوندهای می/نمی
+# افزودن نیم‌فاصله بعد از پیشوندهای می/نمی
 def fix_me_nemi(text, report_counts):
     VERB_SUFFIXES = ["م","ی","د","یم","ید","ند"]
     pattern = r"(?<!\u200c)\b(ن?می)(?:\s+)?([\u0600-\u06FF]+)\b"
@@ -272,16 +271,16 @@ def fix_me_nemi(text, report_counts):
         prefix=match.group(1)
         word_part=match.group(2)
         if any(word_part.endswith(s) for s in VERB_SUFFIXES):
-            report_counts["فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"] +=1
+            report_counts["فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"] +=1
             return prefix+ZWNJ+word_part
         compound_verbs=["شده","رفت","آمد","خورد","گشت","شد"]
         if word_part in compound_verbs:
-            report_counts["فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)"] +=1
+            report_counts["فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"] +=1
             return prefix+ZWNJ+word_part
         return match.group(0)
     return re.sub(pattern, replace_func, text)
 
-# حذف فاصلهٔ اضافی بین پیشوندها و افعال
+# حذف فاصلهٔ اضافی بین پیشوندها و افعال ساده
 def fix_prefix_verbs(text, report_counts):
     prefixes = ["بر","در","فرو","فرا","باز","وا","ورا","ور"]
     block_words = ["می","نمی","خواهد","باید","که"]
@@ -356,7 +355,7 @@ def fix_spaces(text, report_counts):
         report_counts["فاصلهٔ داخلی علائم سجاوندی"] += n
     return text
 
-# اصلاح فاصلهٔ قبل از علائم سجاوندی با استثناء
+# اصلاح فاصلهٔ قبل از علائم سجاوندی با در نظر داشتن استثناءها
 def fix_space_before_punct(text, report_counts):
     def repl(match):
         punct = match.group(1)
@@ -434,30 +433,70 @@ def fix_text_full(event=None):
         doc = desktop.getCurrentComponent()
         if not doc or not doc.supportsService("com.sun.star.text.TextDocument"):
             return
+
         options = load_config()
         options = show_dialog(options)
+
         report_counts = {k:0 for k in [
             "کاف عربی","ی عربی","ویرگول انگلیسی","نقطه‌ویرگول انگلیسی","علامت سؤال انگلیسی",
             "گیومهٔ انگلیسی","اعداد انگلیسی","اعداد عربی","درصد انگلیسی","کسرهٔ اضافه",
             "علامت پرسش تکراری","علامت تعجب تکراری",
-            "فاصلهٔ قبل از پیشوند افعال (مثل: می/نمی)","فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)",
+            "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)","فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)",
             "فاصلهٔ اضافه بین واژه‌ها","فاصلهٔ داخلی علائم سجاوندی","فاصلهٔ قبل از علائم سجاوندی",
             "فاصلهٔ بین اجزاء افعال پیشوندی","غلط‌های املایی (بانک)","سه‌نقطهٔ تعلیق","نیم‌فاصلهٔ کاذب"
         ]}
-        text = doc.Text
-        cursor = text.createTextCursor()
-        cursor.gotoStart(False)
-        while True:
-            cursor.gotoEndOfParagraph(True)
-            old_text = cursor.getString()
-            if old_text:
-                new_text = fix_all(old_text, options, report_counts)
-                if new_text != old_text:
-                    cursor.setString(new_text)
-            if not cursor.gotoNextParagraph(False):
+
+        # ---------- تشخیص واقعی وجود انتخاب ----------
+        selections = doc.CurrentSelection
+        has_nonempty_selection = False
+        try:
+            count = selections.getCount()
+        except Exception:
+            count = 0
+
+        for i in range(count):
+            try:
+                sel = selections.getByIndex(i)
+            except Exception:
+                continue
+            # بعضی اشیاء ممکن است String نداشته باشند؛ پس از hasattr استفاده می‌کنیم
+            if not hasattr(sel, "String"):
+                continue
+            s = sel.String
+            # اگر حتی یک انتخاب حاوی کاراکتر غیر فاصله باشد، فرض می‌کنیم انتخاب واقعی است
+            if s and s.strip():
+                has_nonempty_selection = True
                 break
 
-        # مجموع اصلاحات و نمایش پنجرهٔ «گزارش اصلاح متن»
+        if has_nonempty_selection:
+            # ۱. فقط بخش‌های انتخاب‌شده را اصلاح کن
+            for i in range(count):
+                try:
+                    sel = selections.getByIndex(i)
+                except Exception:
+                    continue
+                if not hasattr(sel, "String"):
+                    continue
+                old_text = sel.String
+                new_text = fix_all(old_text, options, report_counts)
+                if new_text != old_text:
+                    sel.String = new_text
+        else:
+            # ۲. هیچ انتخاب معناداری نیست -> کل سند را اصلاح کن
+            text = doc.Text
+            cursor = text.createTextCursor()
+            cursor.gotoStart(False)
+            while True:
+                cursor.gotoEndOfParagraph(True)
+                old_text = cursor.getString()
+                if old_text:
+                    new_text = fix_all(old_text, options, report_counts)
+                    if new_text != old_text:
+                        cursor.setString(new_text)
+                if not cursor.gotoNextParagraph(False):
+                    break
+
+        # نمایش گزارش
         total = sum(report_counts.values())
         try:
             parent_win = doc.CurrentController.Frame.ContainerWindow
@@ -474,7 +513,7 @@ def fix_text_full(event=None):
         except Exception as e:
             log_error("fix_text_full - MessageBox", e)
 
-        # ---------- ایجاد فایل گزارش ----------
+        # ذخیره فایل گزارش
         try:
             url = doc.URL
             if not url:
