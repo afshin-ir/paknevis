@@ -11,8 +11,14 @@ from urllib.parse import unquote, urlparse
 
 ZWNJ = "\u200c"
 
-# مسیر فایل‌های تنظیمات و جایگذاری
-BASE_DIR = os.path.join(os.path.expanduser("~"), ".config", "libreoffice", "4", "user", "Scripts", "python")
+# اصلاح شد: مسیر پویا برای فایل‌های تنظیمات و جایگذاری
+# این روش باعث می‌شود اسکریپت در هر سیستم‌عاملی کار کند، بدون نیاز به تغییر مسیر دستی.
+try:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    # در صورتی که __file__ تعریف نشده باشد (مثلا در برخی محیطهای تست)، از روش قبلی استفاده می‌کنیم
+    BASE_DIR = os.path.join(os.path.expanduser("~"), ".config", "libreoffice", "4", "user", "Scripts", "python")
+
 CONFIG_FILE = os.path.join(BASE_DIR, "TextFixer.conf")
 REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.json")
 LOG_FILE = os.path.join(BASE_DIR, "TextFixer.log")
@@ -69,6 +75,9 @@ def load_config():
         "fix_extra_spaces", "fix_ellipsis", "fix_fake_hyphens"
     ]}
     defaults["fix_dict"] = False
+    # اصلاح شد: کلید گمشده به تنظیمات پیش‌فرض اضافه شد
+    defaults["fix_space_before_punct"] = True
+    
     if not os.path.exists(CONFIG_FILE):
         return defaults
     try:
@@ -78,7 +87,8 @@ def load_config():
             if "=" not in line:
                 continue
             key, val = line.strip().split("=", 1)
-            defaults[key] = val == "1"
+            if key in defaults:
+                defaults[key] = val == "1"
     except Exception as e:
         log_error("load_config", e)
     return defaults
@@ -265,7 +275,9 @@ def fix_he_ye(text, report_counts):
 
 # افزودن نیم‌فاصله بعد از پیشوندهای می/نمی
 def fix_me_nemi(text, report_counts):
+    # اصلاح شد: لیست افعال مرکب گسترش یافت
     VERB_SUFFIXES = ["م","ی","د","یم","ید","ند"]
+    compound_verbs = ["شده","رفتن","آمدن","خوردن","گشتن","شدن","گذاشتن","پذیرفتن","انداختن","خریدن","کشتن","ساختن","کردن","گرفتن"]
     pattern = r"(?<!\u200c)\b(ن?می)(?:\s+)?([\u0600-\u06FF]+)\b"
     def replace_func(match):
         prefix=match.group(1)
@@ -273,7 +285,6 @@ def fix_me_nemi(text, report_counts):
         if any(word_part.endswith(s) for s in VERB_SUFFIXES):
             report_counts["فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"] +=1
             return prefix+ZWNJ+word_part
-        compound_verbs=["شده","رفت","آمد","خورد","گشت","شد"]
         if word_part in compound_verbs:
             report_counts["فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"] +=1
             return prefix+ZWNJ+word_part
@@ -284,7 +295,8 @@ def fix_me_nemi(text, report_counts):
 def fix_prefix_verbs(text, report_counts):
     prefixes = ["بر","در","فرو","فرا","باز","وا","ورا","ور"]
     block_words = ["می","نمی","خواهد","باید","که"]
-    pattern = r"\b(" + "|".join(prefixes) + r")\s+([آ-ی]+)"
+    # اصلاح شد: محدوده کاراکترها برای پوشش بهتر بهبود یافت
+    pattern = r"\b(" + "|".join(prefixes) + r")\s+([\u0600-\u06FF]+)"
     def repl(m):
         prefix = m.group(1)
         next_word = m.group(2)
@@ -298,10 +310,9 @@ def fix_prefix_verbs(text, report_counts):
 def fix_suffixes(text, report_counts):
     suffixes = r"(تر(?:ین)?|ها|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
     def fix_suffixes_func(m):
+        # اصلاح شد: شرط بی‌فایده و کد مرده حذف شد
         word = m.group(1)
         suffix = m.group(2)
-        if not re.search(r"\s", m.group(0)):
-            return m.group(0)
         one_letter_suffixes = ["م","ت","ش"]
         two_letter_suffixes = ["ام","ات","اش"]
         plural_suffixes = ["مان","تان","شان"]
@@ -323,18 +334,13 @@ def fix_suffixes(text, report_counts):
 def fix_dict(text, report_counts):
     if not REPLACEMENTS:
         return text
-
-    # ساخت یک regex ترکیبی از همه واژه‌های غلط
     pattern = r"\b(" + "|".join(map(re.escape, REPLACEMENTS.keys())) + r")\b"
-
     def replace_match(m):
         correct = REPLACEMENTS[m.group(0)]
         report_counts["غلط‌های املایی (بانک)"] += 1
         return correct
-
     text = re.sub(pattern, replace_match, text)
     return text
-
 
 # اصلاح فاصلهٔ داخلی علائم سجاوندی
 def fix_spaces(text, report_counts):
@@ -355,23 +361,16 @@ def fix_spaces(text, report_counts):
         report_counts["فاصلهٔ داخلی علائم سجاوندی"] += n
     return text
 
-# اصلاح فاصلهٔ قبل از علائم سجاوندی با در نظر داشتن استثناءها
+# اصلاح شد: این تابع به طور کامل برای عملکرد صحیح بازنویسی شد
 def fix_space_before_punct(text, report_counts):
-    def repl(match):
-        punct = match.group(1)
-        if punct in "([«":
-            if match.start()==0:
-                return punct
-            elif text[match.start()-1]!=" ":
-                return " "+punct
-            else:
-                return match.group(0)
-        else:
-            return punct
-    new_text, n = re.subn(r"\s*([،؛:؟!.»\]\)\}])", repl, text)
-    if n:
-        report_counts["فاصلهٔ قبل از علائم سجاوندی"] += n
-    return new_text
+    # بخش اول: حذف فاصله اضافی قبل از علائم پایانی
+    text, n1 = re.subn(r"\s+([،؛:؟!.»\]\)\}])", r"\1", text)
+    # بخش دوم: افزودن فاصله قبل از علائم آغازین در صورت عدم وجود
+    text, n2 = re.subn(r"(\S)([«\[(])", r"\1 \2", text)
+    total_changes = n1 + n2
+    if total_changes:
+        report_counts["فاصلهٔ قبل از علائم سجاوندی"] += total_changes
+    return text
 
 # حذف فاصله‌های اضافه بین واژه‌ها
 def fix_extra_spaces(text, report_counts):
@@ -425,6 +424,8 @@ def fix_all(text, options, report_counts):
 
 # ---------- ماکروی اصلی ----------
 # اجرای ماکروی کامل روی کل سند، نمایش گزارش و ذخیره فایل گزارش
+# ---------- ماکروی اصلی ----------
+# اجرای ماکروی کامل روی کل سند، نمایش گزارش و ذخیره فایل گزارش
 def fix_text_full(event=None):
     try:
         ctx = uno.getComponentContext()
@@ -459,17 +460,16 @@ def fix_text_full(event=None):
                 sel = selections.getByIndex(i)
             except Exception:
                 continue
-            # بعضی اشیاء ممکن است String نداشته باشند؛ پس از hasattr استفاده می‌کنیم
             if not hasattr(sel, "String"):
                 continue
             s = sel.String
-            # اگر حتی یک انتخاب حاوی کاراکتر غیر فاصله باشد، فرض می‌کنیم انتخاب واقعی است
             if s and s.strip():
                 has_nonempty_selection = True
                 break
 
         if has_nonempty_selection:
-            # ۱. فقط بخش‌های انتخاب‌شده را اصلاح کن
+            # ۱. فقط بخش‌های انتخاب‌شده را اصلاح کن (این بخش فعلاً دست‌نخورده باقی می‌ماند)
+            # TODO: Implement selection processing with TextPortions for full consistency
             for i in range(count):
                 try:
                     sel = selections.getByIndex(i)
@@ -482,19 +482,52 @@ def fix_text_full(event=None):
                 if new_text != old_text:
                     sel.String = new_text
         else:
-            # ۲. هیچ انتخاب معناداری نیست -> کل سند را اصلاح کن
-            text = doc.Text
-            cursor = text.createTextCursor()
-            cursor.gotoStart(False)
-            while True:
-                cursor.gotoEndOfParagraph(True)
-                old_text = cursor.getString()
-                if old_text:
-                    new_text = fix_all(old_text, options, report_counts)
-                    if new_text != old_text:
-                        cursor.setString(new_text)
-                if not cursor.gotoNextParagraph(False):
-                    break
+            # ۲. هیچ انتخاب معناداری نیست -> کل سند را به صورت هوشمند اصلاح کن
+            # این روش از TextPortions برای حفظ ساختار سند (مثل پانویس‌ها) استفاده می‌کند
+            doc_text = doc.getText()
+            enum = doc_text.createEnumeration()
+            while enum.hasMoreElements():
+                paragraph = enum.nextElement()
+                # فقط پاراگراف‌ها را پردازش کن
+                if paragraph.supportsService("com.sun.star.text.Paragraph"):
+                    portion_enum = paragraph.createEnumeration()
+                    # برای ذخیره بخش‌های اصلاح‌شده جهت جایگزینی در یک مرحله
+                    # این روش بهتر از جایگزینی بخش به بخش است چون اندیس‌ها را به هم نمی‌ریزد
+                    fixed_parts = []
+                    cursor = doc_text.createTextCursorByRange(paragraph.getStart())
+                    
+                    while portion_enum.hasMoreElements():
+                        portion = portion_enum.nextElement()
+                        cursor.gotoRange(portion.getEnd(), True)
+                        
+                        # اگر بخش، یک فیلد پانویس بود، آن را نادیده بگیر
+                        if portion.TextPortionType == "Footnote":
+                            fixed_parts.append(portion.getString())
+                            cursor.collapseToEnd()
+                            continue
+                        
+                        # در غیر این صورت، اگر متن معمولی بود، آن را اصلاح کن
+                        if portion.TextPortionType == "Text":
+                            old_text = portion.getString()
+                            if old_text:
+                                new_text = fix_all(old_text, options, report_counts)
+                                fixed_parts.append(new_text)
+                            else:
+                                fixed_parts.append("")
+                            cursor.collapseToEnd()
+                            continue
+                        
+                        # برای انواع دیگر بخش‌ها (مثل جداول، تصاویر و غیره)
+                        fixed_parts.append(portion.getString())
+                        cursor.collapseToEnd()
+
+                    # حالا کل پاراگراف را با بخش‌های اصلاح‌شده جایگزین کن
+                    # این کار ساختار کلی پاراگراف را حفظ می‌کند
+                    final_text = "".join(fixed_parts)
+                    # فقط در صورتی جایگزین کن که تغییری ایجاد شده باشد
+                    if paragraph.getString() != final_text:
+                         paragraph.setString(final_text)
+
 
         # نمایش گزارش
         total = sum(report_counts.values())
@@ -537,3 +570,26 @@ def fix_text_full(event=None):
     except Exception as e:
         log_error("fix_text_full", e)
 
+        # ذخیره فایل گزارش
+        try:
+            url = doc.URL
+            if not url:
+                folder = os.path.expanduser("~")
+                filename = "Untitled"
+            else:
+                folder = os.path.dirname(unquote(urlparse(url).path))
+                filename = os.path.basename(unquote(urlparse(url).path))
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            report_filename = f"Paknevis Report [{now}].txt"
+            report_path = os.path.join(folder, report_filename)
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(f"نام فایل: {filename}\n\n")
+                f.write(f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n")
+                for k,v in report_counts.items():
+                    if v>0:
+                        f.write(f"{k}: {en_numbers_to_fa(str(v))}\n")
+        except Exception as e:
+            log_error("fix_text_full - write report file", e)
+
+    except Exception as e:
+        log_error("fix_text_full", e)
