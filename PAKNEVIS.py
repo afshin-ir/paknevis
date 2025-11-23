@@ -294,29 +294,56 @@ def fix_prefix_verbs(text, report_counts):
         return prefix+next_word
     return re.sub(pattern, repl, text)
 
-# اصلاح فاصلهٔ قبل از ضمایر ملکی و افزودن نیم‌فاصله در صورت نیاز
+# اصلاح فاصلهٔ قبل از ضمایر ملکی و پسوندهای جمع (شامل موارد پیچیده)
+# اصلاح فاصلهٔ قبل از ضمایر ملکی و پسوندهای جمع (رویکرد دو مرحله‌ای)
+# اصلاح فاصلهٔ قبل از ضمایر ملکی و پسوندهای جمع (رویکرد ساده و مستقیم)
 def fix_suffixes(text, report_counts):
-    suffixes = r"(تر(?:ین)?|ها|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
-    def fix_suffixes_func(m):
+    # ---------- بخش اول: اصلاح پسوندهای «ها» و مشتقات آن ----------
+    # این بخش دقیقاً طبق پیشنهاد شما عمل می‌کند.
+    ha_suffixes = [
+        "ها", "های", "هایی", "هایم", "هایت", "هایش", 
+        "هایمان", "هایتان", "هایشان"
+    ]
+    
+    total_ha_fixes = 0
+    for suffix in ha_suffixes:
+        # الگو: یک کلمه (غیرفاصله) + یک یا چند فاصله + پسوند مورد نظر
+        # \b برای اطمینان از اینکه به ابتدای/انتهای کلمه می‌رسیم
+        pattern = rf"\b(\S+)\s+{suffix}\b"
+        text, num_replacements = re.subn(pattern, rf"\1{ZWNJ}{suffix}", text)
+        total_ha_fixes += num_replacements
+        
+    # تمام این اصلاحات را تحت عنوان «پسوند جمع» گزارش می‌کنیم که صحیح‌تر است
+    report_counts["فاصلهٔ قبل از پسوند جمع"] += total_ha_fixes
+
+    # ---------- بخش دوم: اصلاح سایر پسوندها ----------
+    # این بخش برای سایر ضمایر ملکی و پسوندهای مقایسه‌ای است
+    other_suffixes = r"(تر(?:ین)?|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
+    
+    def fix_other_suffixes(m):
         word = m.group(1)
         suffix = m.group(2)
-        if not re.search(r"\s", m.group(0)):
-            return m.group(0)
-        one_letter_suffixes = ["م","ت","ش"]
-        two_letter_suffixes = ["ام","ات","اش"]
-        plural_suffixes = ["مان","تان","شان"]
+        
+        report_counts["فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"] += 1
+        
+        one_letter_suffixes = ["م", "ت", "ش"]
+        two_letter_suffixes = ["ام", "ات", "اش"]
+        plural_suffixes = ["مان", "تان", "شان"]
+        
         if suffix in one_letter_suffixes:
-            return word+suffix
+            return word + suffix
         if suffix in two_letter_suffixes:
-            return word+ZWNJ+suffix
+            return word + ZWNJ + suffix
         if suffix in plural_suffixes:
             if word.endswith("ه"):
-                return word+ZWNJ+suffix
-            return word+suffix
-        return word+ZWNJ+suffix
-    pattern_suffix = rf"(\S+)\s+{suffixes}\b"
-    text, n2 = re.subn(pattern_suffix, fix_suffixes_func, text)
-    report_counts["فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"] += n2
+                return word + ZWNJ + suffix
+            return word + suffix
+        # برای پسوندهای "تر" و "ترین"
+        return word + ZWNJ + suffix
+
+    pattern_other = rf"(\S+)\s+{other_suffixes}\b"
+    text = re.sub(pattern_other, fix_other_suffixes, text)
+    
     return text
 
 # تصحیح غلط‌های املایی با کمک گرفتن از بانک کلمات
@@ -442,6 +469,7 @@ def fix_text_full(event=None):
             "گیومهٔ انگلیسی","اعداد انگلیسی","اعداد عربی","درصد انگلیسی","کسرهٔ اضافه",
             "علامت پرسش تکراری","علامت تعجب تکراری",
             "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)","فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)",
+            "فاصلهٔ قبل از پسوند جمع",
             "فاصلهٔ اضافه بین واژه‌ها","فاصلهٔ داخلی علائم سجاوندی","فاصلهٔ قبل از علائم سجاوندی",
             "فاصلهٔ بین اجزاء افعال پیشوندی","غلط‌های املایی (بانک)","سه‌نقطهٔ تعلیق","نیم‌فاصلهٔ کاذب"
         ]}
