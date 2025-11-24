@@ -92,6 +92,37 @@ def save_config(options):
     except Exception as e:
         log_error("save_config", e)
 
+# تابع مرکزی برای مقداردهی اولیه دیکشنری گزارش (پیشنهاد شماره ۴)
+def get_initial_report_counts():
+    """
+    یک دیکشنری استاندارد با تمام کلیدهای گزارش و مقدار اولیه صفر برمی‌گرداند.
+    این کار از تکرار کد و خطاهای تایپی جلوگیری می‌کند.
+    """
+    return {
+        "کاف عربی": 0,
+        "ی عربی": 0,
+        "ویرگول انگلیسی": 0,
+        "نقطه‌ویرگول انگلیسی": 0,
+        "علامت سؤال انگلیسی": 0,
+        "گیومهٔ انگلیسی": 0,
+        "اعداد انگلیسی": 0,
+        "اعداد عربی": 0,
+        "درصد انگلیسی": 0,
+        "کسرهٔ اضافه": 0,
+        "علامت پرسش تکراری": 0,
+        "علامت تعجب تکراری": 0,
+        "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)": 0,
+        "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)": 0,
+        "فاصلهٔ قبل از پسوند جمع": 0,
+        "فاصلهٔ اضافه بین واژه‌ها": 0,
+        "فاصلهٔ داخلی علائم سجاوندی": 0,
+        "فاصلهٔ قبل از علائم سجاوندی": 0,
+        "فاصلهٔ بین اجزاء افعال پیشوندی": 0,
+        "غلط‌های املایی (بانک)": 0,
+        "سه‌نقطهٔ تعلیق": 0,
+        "نیم‌فاصلهٔ کاذب": 0,
+    }
+
 # ---------- کلاس و دیالوگ ----------
 # Listener برای بستن ایمن دیالوگ
 class MyTopWindowListener(unohelper.Base, XTopWindowListener):
@@ -294,55 +325,58 @@ def fix_prefix_verbs(text, report_counts):
         return prefix+next_word
     return re.sub(pattern, repl, text)
 
-# اصلاح فاصلهٔ قبل از ضمایر ملکی و پسوندهای جمع (شامل موارد پیچیده)
-# اصلاح فاصلهٔ قبل از ضمایر ملکی و پسوندهای جمع (رویکرد دو مرحله‌ای)
-# اصلاح فاصلهٔ قبل از ضمایر ملکی و پسوندهای جمع (رویکرد ساده و مستقیم)
-def fix_suffixes(text, report_counts):
-    # ---------- بخش اول: اصلاح پسوندهای «ها» و مشتقات آن ----------
-    # این بخش دقیقاً طبق پیشنهاد شما عمل می‌کند.
+# تابع جدید برای اصلاح پسوندهای جمع «ها» و مشتقات آن (پیشنهاد شماره ۲)
+def fix_ha_suffix(text, report_counts):
+    """
+    فاصله‌گذاری قبل از پسوندهای جمع «ها» و مشتقات آن را اصلاح می‌کند.
+    مثال: کتاب ها -> کتاب‌ها
+    """
     ha_suffixes = [
-        "ها", "های", "هایی", "هایم", "هایت", "هایش", 
+        "ها", "های", "هایی", "هایم", "هایت", "هایش",
         "هایمان", "هایتان", "هایشان"
     ]
     
-    total_ha_fixes = 0
+    total_fixes = 0
     for suffix in ha_suffixes:
-        # الگو: یک کلمه (غیرفاصله) + یک یا چند فاصله + پسوند مورد نظر
-        # \b برای اطمینان از اینکه به ابتدای/انتهای کلمه می‌رسیم
-        pattern = rf"\b(\S+)\s+{suffix}\b"
-        text, num_replacements = re.subn(pattern, rf"\1{ZWNJ}{suffix}", text)
-        total_ha_fixes += num_replacements
+        pattern = rf"\b(\S+)\s+({suffix})\b"
+        text, num_replacements = re.subn(pattern, rf"\1{ZWNJ}\2", text)
+        total_fixes += num_replacements
         
-    # تمام این اصلاحات را تحت عنوان «پسوند جمع» گزارش می‌کنیم که صحیح‌تر است
-    report_counts["فاصلهٔ قبل از پسوند جمع"] += total_ha_fixes
+    report_counts["فاصلهٔ قبل از پسوند جمع"] += total_fixes
+    return text
 
-    # ---------- بخش دوم: اصلاح سایر پسوندها ----------
-    # این بخش برای سایر ضمایر ملکی و پسوندهای مقایسه‌ای است
-    other_suffixes = r"(تر(?:ین)?|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
+# تابع جدید برای اصلاح ضمایر ملکی و سایر پسوندها (پیشنهاد شماره ۲)
+def fix_pronominal_suffixes(text, report_counts):
+    """
+    فاصله‌گذاری قبل از ضمایر ملکی و پسوندهای تفضیلی را اصلاح می‌کند.
+    مثال: رفته ام -> رفته‌ام، بزرگ تر -> بزرگ‌تر
+    """
+    suffixes_pattern = r"(تر(?:ین)?|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
     
-    def fix_other_suffixes(m):
-        word = m.group(1)
-        suffix = m.group(2)
+    def repl(match):
+        word = match.group(1)
+        suffix = match.group(2)
         
         report_counts["فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"] += 1
         
-        one_letter_suffixes = ["م", "ت", "ش"]
-        two_letter_suffixes = ["ام", "ات", "اش"]
-        plural_suffixes = ["مان", "تان", "شان"]
+        if suffix in ["م", "ت", "ش"]:
+            return f"{word}{suffix}"
         
-        if suffix in one_letter_suffixes:
-            return word + suffix
-        if suffix in two_letter_suffixes:
-            return word + ZWNJ + suffix
-        if suffix in plural_suffixes:
-            if word.endswith("ه"):
-                return word + ZWNJ + suffix
-            return word + suffix
-        # برای پسوندهای "تر" و "ترین"
-        return word + ZWNJ + suffix
+        return f"{word}{ZWNJ}{suffix}"
 
-    pattern_other = rf"(\S+)\s+{other_suffixes}\b"
-    text = re.sub(pattern_other, fix_other_suffixes, text)
+    pattern = rf"(\S+)\s+{suffixes_pattern}\b"
+    return re.sub(pattern, repl, text)
+
+# تابع اصلی اصلاح‌شده که دو تابع بالا را فراخوانی می‌کند (پیشنهاد شماره ۲)
+def fix_suffixes(text, report_counts):
+    """
+    اصلاح فاصله‌گذاری برای تمام انواع پسوندهای رایج فارسی.
+    این تابع دو وظیفه اصلی دارد:
+    ۱. اصلاح فاصله قبل از پسوندهای جمع (ها)
+    ۲. اصلاح فاصله قبل از ضمایر ملکی و پسوندهای تفضیلی
+    """
+    text = fix_ha_suffix(text, report_counts)
+    text = fix_pronominal_suffixes(text, report_counts)
     
     return text
 
@@ -351,7 +385,6 @@ def fix_dict(text, report_counts):
     if not REPLACEMENTS:
         return text
 
-    # ساخت یک regex ترکیبی از همه واژه‌های غلط
     pattern = r"\b(" + "|".join(map(re.escape, REPLACEMENTS.keys())) + r")\b"
 
     def replace_match(m):
@@ -361,7 +394,6 @@ def fix_dict(text, report_counts):
 
     text = re.sub(pattern, replace_match, text)
     return text
-
 
 # اصلاح فاصلهٔ داخلی علائم سجاوندی
 def fix_spaces(text, report_counts):
@@ -451,7 +483,6 @@ def fix_all(text, options, report_counts):
     return text
 
 # ---------- ماکروی اصلی ----------
-# اجرای ماکروی کامل روی کل سند، نمایش گزارش و ذخیره فایل گزارش
 def fix_text_full(event=None):
     try:
         ctx = uno.getComponentContext()
@@ -464,15 +495,9 @@ def fix_text_full(event=None):
         options = load_config()
         options = show_dialog(options)
 
-        report_counts = {k:0 for k in [
-            "کاف عربی","ی عربی","ویرگول انگلیسی","نقطه‌ویرگول انگلیسی","علامت سؤال انگلیسی",
-            "گیومهٔ انگلیسی","اعداد انگلیسی","اعداد عربی","درصد انگلیسی","کسرهٔ اضافه",
-            "علامت پرسش تکراری","علامت تعجب تکراری",
-            "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)","فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)",
-            "فاصلهٔ قبل از پسوند جمع",
-            "فاصلهٔ اضافه بین واژه‌ها","فاصلهٔ داخلی علائم سجاوندی","فاصلهٔ قبل از علائم سجاوندی",
-            "فاصلهٔ بین اجزاء افعال پیشوندی","غلط‌های املایی (بانک)","سه‌نقطهٔ تعلیق","نیم‌فاصلهٔ کاذب"
-        ]}
+        # --- تغییر اصلی در این خط (پیشنهاد شماره ۴) ---
+        # به جای تعریف طولانی دیکشنری، از تابع مرکزی استفاده می‌کنیم
+        report_counts = get_initial_report_counts()
 
         # ---------- تشخیص واقعی وجود انتخاب ----------
         selections = doc.CurrentSelection
@@ -487,17 +512,14 @@ def fix_text_full(event=None):
                 sel = selections.getByIndex(i)
             except Exception:
                 continue
-            # بعضی اشیاء ممکن است String نداشته باشند؛ پس از hasattr استفاده می‌کنیم
             if not hasattr(sel, "String"):
                 continue
             s = sel.String
-            # اگر حتی یک انتخاب حاوی کاراکتر غیر فاصله باشد، فرض می‌کنیم انتخاب واقعی است
             if s and s.strip():
                 has_nonempty_selection = True
                 break
 
         if has_nonempty_selection:
-            # ۱. فقط بخش‌های انتخاب‌شده را اصلاح کن
             for i in range(count):
                 try:
                     sel = selections.getByIndex(i)
@@ -510,7 +532,6 @@ def fix_text_full(event=None):
                 if new_text != old_text:
                     sel.String = new_text
         else:
-            # ۲. هیچ انتخاب معناداری نیست -> کل سند را اصلاح کن
             text = doc.Text
             cursor = text.createTextCursor()
             cursor.gotoStart(False)
@@ -564,4 +585,3 @@ def fix_text_full(event=None):
 
     except Exception as e:
         log_error("fix_text_full", e)
-
