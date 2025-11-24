@@ -8,6 +8,7 @@ from com.sun.star.awt.MessageBoxType import MESSAGEBOX
 from com.sun.star.awt import XTopWindowListener
 import datetime
 from urllib.parse import unquote, urlparse
+from enum import Enum, auto # <-- وارد کردن کتابخانه Enum
 
 ZWNJ = "\u200c"
 
@@ -16,6 +17,54 @@ BASE_DIR = os.path.join(os.path.expanduser("~"), ".config", "libreoffice", "4", 
 CONFIG_FILE = os.path.join(BASE_DIR, "TextFixer.conf")
 REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.json")
 LOG_FILE = os.path.join(BASE_DIR, "TextFixer.log")
+
+# ---------- تعریف Enum برای تنظیمات 
+class FixOption(Enum):
+    """این Enum تمام کلیدهای تنظیمات را به صورت ثابت و امن تعریف می‌کند."""
+    FIX_K_Y = auto()
+    FIX_PUNCT = auto()
+    FIX_QUOTES = auto()
+    FIX_NUMBERS_EN = auto()
+    FIX_NUMBERS_AR = auto()
+    FIX_HE_YE = auto()
+    FIX_ME_NEMI = auto()
+    FIX_PREFIX_VERBS = auto()
+    FIX_SUFFIXES = auto()
+    FIX_SPACES = auto()
+    FIX_SPACE_BEFORE_PUNCT = auto()
+    FIX_EXTRA_SPACES = auto()
+    FIX_ELLIPSIS = auto()
+    FIX_FAKE_HYPHENS = auto()
+    FIX_DICT = auto()
+
+    @classmethod
+    def get_defaults(cls):
+        """یک دیکشنری از مقادیر پیش‌فرض برای تمام گزینه‌ها برمی‌گرداند."""
+        defaults = {option.name: True for option in cls}
+        defaults[FixOption.FIX_DICT.name] = False
+        return defaults
+
+    @classmethod
+    def get_dialog_items(cls):
+        """لیستی از تاپل‌ها (کلید, برچسب) برای ساخت دیالوگ برمی‌گرداند."""
+        return [
+            (cls.FIX_K_Y.name, "تبدیل حرف ي و ك عربی به فارسی"),
+            (cls.FIX_PUNCT.name, "تبدیل علائم سجاوندی انگلیسی به فارسی"),
+            (cls.FIX_QUOTES.name, "گیومهٔ انگلیسی"),
+            (cls.FIX_NUMBERS_EN.name, "اعداد انگلیسی"),
+            (cls.FIX_NUMBERS_AR.name, "اعداد عربی"),
+            (cls.FIX_HE_YE.name, "کسرهٔ اضافه"),
+            (cls.FIX_ME_NEMI.name, "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"),
+            (cls.FIX_PREFIX_VERBS.name, "فاصلهٔ بین اجزاء افعال پیشوندی"),
+            (cls.FIX_SUFFIXES.name, "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"),
+            (cls.FIX_SPACES.name, "فاصلهٔ داخلی علائم سجاوندی"),
+            (cls.FIX_SPACE_BEFORE_PUNCT.name, "فاصلهٔ قبل از علائم سجاوندی (با استثناء)"),
+            (cls.FIX_EXTRA_SPACES.name, "فاصلهٔ اضافه بین واژه‌ها"),
+            (cls.FIX_ELLIPSIS.name, "سه‌نقطهٔ تعلیق"),
+            (cls.FIX_FAKE_HYPHENS.name, "تبدیل نیم‌فاصله‌های کاذب به نیم‌فاصلهٔ واقعی"),
+            (cls.FIX_DICT.name, "غلط‌های املایی (بانک)")
+        ]
+
 
 # ---------- توابع کمکی ----------
 # ثبت خطاها در فایل لاگ
@@ -63,12 +112,7 @@ simple_verbs = [
 
 # بارگذاری تنظیمات کاربر از فایل یا استفاده از پیش‌فرض‌ها
 def load_config():
-    defaults = {key: True for key in [
-        "fix_k_y", "fix_punct", "fix_quotes", "fix_numbers_en", "fix_numbers_ar",
-        "fix_he_ye", "fix_me_nemi", "fix_prefix_verbs", "fix_suffixes", "fix_spaces", 
-        "fix_extra_spaces", "fix_ellipsis", "fix_fake_hyphens"
-    ]}
-    defaults["fix_dict"] = False
+    defaults = FixOption.get_defaults()
     if not os.path.exists(CONFIG_FILE):
         return defaults
     try:
@@ -78,7 +122,8 @@ def load_config():
             if "=" not in line:
                 continue
             key, val = line.strip().split("=", 1)
-            defaults[key] = val == "1"
+            if key in defaults:
+                defaults[key] = val == "1"
     except Exception as e:
         log_error("load_config", e)
     return defaults
@@ -92,80 +137,40 @@ def save_config(options):
     except Exception as e:
         log_error("save_config", e)
 
-# تابع مرکزی برای مقداردهی اولیه دیکشنری گزارش (پیشنهاد شماره ۴)
+# تابع مرکزی برای مقداردهی اولیه دیکشنری گزارش
 def get_initial_report_counts():
-    """
-    یک دیکشنری استاندارد با تمام کلیدهای گزارش و مقدار اولیه صفر برمی‌گرداند.
-    این کار از تکرار کد و خطاهای تایپی جلوگیری می‌کند.
-    """
     return {
-        "کاف عربی": 0,
-        "ی عربی": 0,
-        "ویرگول انگلیسی": 0,
-        "نقطه‌ویرگول انگلیسی": 0,
-        "علامت سؤال انگلیسی": 0,
-        "گیومهٔ انگلیسی": 0,
-        "اعداد انگلیسی": 0,
-        "اعداد عربی": 0,
-        "درصد انگلیسی": 0,
-        "کسرهٔ اضافه": 0,
-        "علامت پرسش تکراری": 0,
-        "علامت تعجب تکراری": 0,
-        "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)": 0,
-        "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)": 0,
-        "فاصلهٔ قبل از پسوند جمع": 0,
-        "فاصلهٔ اضافه بین واژه‌ها": 0,
-        "فاصلهٔ داخلی علائم سجاوندی": 0,
-        "فاصلهٔ قبل از علائم سجاوندی": 0,
-        "فاصلهٔ بین اجزاء افعال پیشوندی": 0,
-        "غلط‌های املایی (بانک)": 0,
-        "سه‌نقطهٔ تعلیق": 0,
-        "نیم‌فاصلهٔ کاذب": 0,
+        "کاف عربی": 0, "ی عربی": 0, "ویرگول انگلیسی": 0, "نقطه‌ویرگول انگلیسی": 0,
+        "علامت سؤال انگلیسی": 0, "گیومهٔ انگلیسی": 0, "اعداد انگلیسی": 0, "اعداد عربی": 0,
+        "درصد انگلیسی": 0, "کسرهٔ اضافه": 0, "علامت پرسش تکراری": 0, "علامت تعجب تکراری": 0,
+        "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)": 0, "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)": 0,
+        "فاصلهٔ قبل از پسوند جمع": 0, "فاصلهٔ اضافه بین واژه‌ها": 0, "فاصلهٔ داخلی علائم سجاوندی": 0,
+        "فاصلهٔ قبل از علائم سجاوندی": 0, "فاصلهٔ بین اجزاء افعال پیشوندی": 0, "غلط‌های املایی (بانک)": 0,
+        "سه‌نقطهٔ تعلیق": 0, "نیم‌فاصلهٔ کاذب": 0,
     }
 
 # ---------- کلاس و دیالوگ ----------
-# Listener برای بستن ایمن دیالوگ
 class MyTopWindowListener(unohelper.Base, XTopWindowListener):
     def windowClosing(self, ev):
-        try:
-            ev.Source.dispose()
-        except Exception as e:
-            log_error("MyTopWindowListener.windowClosing", e)
+        try: ev.Source.dispose()
+        except Exception as e: log_error("MyTopWindowListener.windowClosing", e)
     def windowClosed(self, ev): pass
     def windowActivated(self, ev): pass
     def windowDeactivated(self, ev): pass
 
-# نمایش پنجرهٔ «گزینش اصلاح‌ها» به کاربر
 def show_dialog(options):
     try:
         ctx = uno.getComponentContext()
         smgr = ctx.ServiceManager
         toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
-
         dialog_model = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", ctx)
         dialog = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialog", ctx)
         dialog.setModel(dialog_model)
         dialog.setTitle("گزینش اصلاح‌ها")
 
-        items = [
-    ("fix_k_y", "تبدیل حرف ي و ك عربی به فارسی"),
-    ("fix_punct", "تبدیل علائم سجاوندی انگلیسی به فارسی"),
-    ("fix_quotes", "گیومهٔ انگلیسی"),
-    ("fix_numbers_en", "اعداد انگلیسی"),
-    ("fix_numbers_ar", "اعداد عربی"),
-    ("fix_he_ye", "کسرهٔ اضافه"),
-    ("fix_me_nemi", "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"),
-    ("fix_prefix_verbs", "فاصلهٔ بین اجزاء افعال پیشوندی"),
-    ("fix_suffixes", "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"),
-    ("fix_spaces", "فاصلهٔ داخلی علائم سجاوندی"),
-    ("fix_space_before_punct", "فاصلهٔ قبل از علائم سجاوندی (با استثناء)"),
-    ("fix_extra_spaces", "فاصلهٔ اضافه بین واژه‌ها"),
-    ("fix_ellipsis", "سه‌نقطهٔ تعلیق"),
-    ("fix_fake_hyphens", "تبدیل نیم‌فاصله‌های کاذب به نیم‌فاصلهٔ واقعی"),
-    ("fix_dict", "غلط‌های املایی (بانک)")
-]
+        # --- استفاده از Enum برای ساخت آیتم‌های دیالوگ ---
+        items = FixOption.get_dialog_items()
 
-        # تنظیم ارتفاع و موقعیت چک‌باکس‌ها و دکمه
         item_height = 15
         padding_top = 10
         padding_bottom = 30
@@ -200,19 +205,14 @@ def show_dialog(options):
         dialog_model.insertByName("btn_ok", btn_ok)
 
         dialog.createPeer(toolkit, None)
-
         try:
             peer = dialog.getPeer()
             listener = MyTopWindowListener()
-            try:
-                peer.addTopWindowListener(listener)
+            try: peer.addTopWindowListener(listener)
             except Exception as e1:
-                try:
-                    peer.getContainerWindow().addTopWindowListener(listener)
-                except Exception as e2:
-                    log_error("show_dialog - addTopWindowListener", e2)
-        except Exception as e:
-            log_error("show_dialog - getPeer", e)
+                try: peer.getContainerWindow().addTopWindowListener(listener)
+                except Exception as e2: log_error("show_dialog - addTopWindowListener", e2)
+        except Exception as e: log_error("show_dialog - getPeer", e)
 
         result = dialog.execute()
         if result == 1:
@@ -228,31 +228,23 @@ def show_dialog(options):
         return options.copy()
 
 # ---------- توابع اصلاح متن ----------
-# «ك» و «ي» عربی را به «ک» و «ی» فارسی تبدیل می‌کند
 def fix_k_y(text, report_counts):
     c_before = text.count("ك")
-    if c_before:
-        report_counts["کاف عربی"] += c_before
-        text = text.replace("ك", "ک")
+    if c_before: report_counts["کاف عربی"] += c_before; text = text.replace("ك", "ک")
     y_before = text.count("ي")
-    if y_before:
-        report_counts["ی عربی"] += y_before
-        text = text.replace("ي", "ی")
+    if y_before: report_counts["ی عربی"] += y_before; text = text.replace("ي", "ی")
     return text
 
-# تبدیل اعداد انگلیسی به فارسی
 def fix_numbers_en_func(text, report_counts):
     text, n = re.subn(r"[0-9]", lambda m: en_numbers_to_fa(m.group(0)), text)
     report_counts["اعداد انگلیسی"] += n
     return text
 
-# تبدیل اعداد عربی به فارسی
 def fix_numbers_ar_func(text, report_counts):
     text, n = re.subn(r"[٠-٩]", lambda m: ar_numbers_to_fa(m.group(0)), text)
     report_counts["اعداد عربی"] += n
     return text
 
-# اصلاح علائم سجاوندی انگلیسی به فارسی و حذف تکراری‌ها
 def fix_punct(text, report_counts):
     punct_map = {",":"،",";":"؛","?":"؟","$":"﷼","%":"٪"}
     for en_punct, fa_punct in punct_map.items():
@@ -263,221 +255,139 @@ def fix_punct(text, report_counts):
             elif en_punct=="?": report_counts["علامت سؤال انگلیسی"]+=n
             elif en_punct=="%": report_counts["درصد انگلیسی"]+=n
             text = text.replace(en_punct, fa_punct)
-    text, n_q = re.subn(r"؟{2,}", "؟", text)
-    report_counts["علامت پرسش تکراری"] += n_q
-    text, n_e = re.subn(r"!{2,}", "!", text)
-    report_counts["علامت تعجب تکراری"] += n_e
+    text, n_q = re.subn(r"؟{2,}", "؟", text); report_counts["علامت پرسش تکراری"] += n_q
+    text, n_e = re.subn(r"!{2,}", "!", text); report_counts["علامت تعجب تکراری"] += n_e
     return text
 
-# اصلاح گیومه‌های انگلیسی به «» فارسی
 def fix_quotes(text, report_counts):
     quote_chars = ['"', "'", '“', '”', '‘', '’']
-    if not any(q in text for q in quote_chars):
-        return text
+    if not any(q in text for q in quote_chars): return text
     result, open_q, cnt = [], True, 0
     for ch in text:
-        if ch in quote_chars:
-            result.append("«" if open_q else "»")
-            open_q = not open_q
-            cnt +=1
-        else:
-            result.append(ch)
-    if cnt%2==1 and result and result[-1]=="«":
-        result[-1]="»"
-    text="".join(result)
-    report_counts["گیومهٔ انگلیسی"] += cnt//2
+        if ch in quote_chars: result.append("«" if open_q else "»"); open_q = not open_q; cnt +=1
+        else: result.append(ch)
+    if cnt%2==1 and result and result[-1]=="«": result[-1]="»"
+    text="".join(result); report_counts["گیومهٔ انگلیسی"] += cnt//2
     return text
 
-# اصلاح کسرهٔ اضافه بعد از «هٔ»
 def fix_he_ye(text, report_counts):
     text, n = re.subn(r"(\S*ه)[\s\u200c]ی\b", lambda m: m.group(1)+"ٔ", text)
     report_counts["کسرهٔ اضافه"] += n
     return text
 
-# افزودن نیم‌فاصله بعد از پیشوندهای می/نمی
 def fix_me_nemi(text, report_counts):
     VERB_SUFFIXES = ["م","ی","د","یم","ید","ند"]
     pattern = r"(?<!\u200c)\b(ن?می)(?:\s+)?([\u0600-\u06FF]+)\b"
     def replace_func(match):
-        prefix=match.group(1)
-        word_part=match.group(2)
-        if any(word_part.endswith(s) for s in VERB_SUFFIXES):
-            report_counts["فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"] +=1
-            return prefix+ZWNJ+word_part
-        compound_verbs=["شده","رفت","آمد","خورد","گشت","شد"]
-        if word_part in compound_verbs:
+        prefix, word_part = match.group(1), match.group(2)
+        if any(word_part.endswith(s) for s in VERB_SUFFIXES) or word_part in ["شده","رفت","آمد","خورد","گشت","شد"]:
             report_counts["فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"] +=1
             return prefix+ZWNJ+word_part
         return match.group(0)
     return re.sub(pattern, replace_func, text)
 
-# حذف فاصلهٔ اضافی بین پیشوندها و افعال ساده
 def fix_prefix_verbs(text, report_counts):
     prefixes = ["بر","در","فرو","فرا","باز","وا","ورا","ور"]
     block_words = ["می","نمی","خواهد","باید","که"]
     pattern = r"\b(" + "|".join(prefixes) + r")\s+([آ-ی]+)"
     def repl(m):
-        prefix = m.group(1)
-        next_word = m.group(2)
-        if next_word in block_words or next_word not in simple_verbs:
-            return m.group(0)
+        prefix, next_word = m.group(1), m.group(2)
+        if next_word in block_words or next_word not in simple_verbs: return m.group(0)
         report_counts["فاصلهٔ بین اجزاء افعال پیشوندی"] +=1
         return prefix+next_word
     return re.sub(pattern, repl, text)
 
-# تابع جدید برای اصلاح پسوندهای جمع «ها» و مشتقات آن (پیشنهاد شماره ۲)
 def fix_ha_suffix(text, report_counts):
-    """
-    فاصله‌گذاری قبل از پسوندهای جمع «ها» و مشتقات آن را اصلاح می‌کند.
-    مثال: کتاب ها -> کتاب‌ها
-    """
-    ha_suffixes = [
-        "ها", "های", "هایی", "هایم", "هایت", "هایش",
-        "هایمان", "هایتان", "هایشان"
-    ]
-    
+    ha_suffixes = ["ها", "های", "هایی", "هایم", "هایت", "هایش", "هایمان", "هایتان", "هایشان"]
     total_fixes = 0
     for suffix in ha_suffixes:
         pattern = rf"\b(\S+)\s+({suffix})\b"
         text, num_replacements = re.subn(pattern, rf"\1{ZWNJ}\2", text)
         total_fixes += num_replacements
-        
     report_counts["فاصلهٔ قبل از پسوند جمع"] += total_fixes
     return text
 
-# تابع جدید برای اصلاح ضمایر ملکی و سایر پسوندها (پیشنهاد شماره ۲)
 def fix_pronominal_suffixes(text, report_counts):
-    """
-    فاصله‌گذاری قبل از ضمایر ملکی و پسوندهای تفضیلی را اصلاح می‌کند.
-    مثال: رفته ام -> رفته‌ام، بزرگ تر -> بزرگ‌تر
-    """
     suffixes_pattern = r"(تر(?:ین)?|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
-    
     def repl(match):
-        word = match.group(1)
-        suffix = match.group(2)
-        
+        word, suffix = match.group(1), match.group(2)
         report_counts["فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"] += 1
-        
-        if suffix in ["م", "ت", "ش"]:
-            return f"{word}{suffix}"
-        
+        if suffix in ["م", "ت", "ش"]: return f"{word}{suffix}"
         return f"{word}{ZWNJ}{suffix}"
-
     pattern = rf"(\S+)\s+{suffixes_pattern}\b"
     return re.sub(pattern, repl, text)
 
-# تابع اصلی اصلاح‌شده که دو تابع بالا را فراخوانی می‌کند (پیشنهاد شماره ۲)
 def fix_suffixes(text, report_counts):
-    """
-    اصلاح فاصله‌گذاری برای تمام انواع پسوندهای رایج فارسی.
-    این تابع دو وظیفه اصلی دارد:
-    ۱. اصلاح فاصله قبل از پسوندهای جمع (ها)
-    ۲. اصلاح فاصله قبل از ضمایر ملکی و پسوندهای تفضیلی
-    """
     text = fix_ha_suffix(text, report_counts)
     text = fix_pronominal_suffixes(text, report_counts)
-    
     return text
 
-# تصحیح غلط‌های املایی با کمک گرفتن از بانک کلمات
 def fix_dict(text, report_counts):
-    if not REPLACEMENTS:
-        return text
-
+    if not REPLACEMENTS: return text
     pattern = r"\b(" + "|".join(map(re.escape, REPLACEMENTS.keys())) + r")\b"
-
     def replace_match(m):
-        correct = REPLACEMENTS[m.group(0)]
         report_counts["غلط‌های املایی (بانک)"] += 1
-        return correct
+        return REPLACEMENTS[m.group(0)]
+    return re.sub(pattern, replace_match, text)
 
-    text = re.sub(pattern, replace_match, text)
-    return text
-
-# اصلاح فاصلهٔ داخلی علائم سجاوندی
 def fix_spaces(text, report_counts):
-    corrections = [
-        (r"(?<=«)\s+",""),
-        (r"\s+(?=»)", ""),
-        (r"(?<=\()\s+",""),
-        (r"\s+(?=\))",""),
-        (r"(?<=\[)\s+",""),
-        (r"\s+(?=\])",""),
-        (r"(?<=\{)\s+",""),
-        (r"\s+(?=\})",""),
-        (r"(?<=⟨)\s+",""),
-        (r"\s+(?=⟩)","")
-    ]
+    corrections = [(r"(?<=«)\s+",""), (r"\s+(?=»)", ""), (r"(?<=\()\s+",""), (r"\s+(?=\))",""), (r"(?<=\[)\s+",""), (r"\s+(?=\])",""), (r"(?<=\{)\s+",""), (r"\s+(?=\})",""), (r"(?<=⟨)\s+",""), (r"\s+(?=⟩)","")]
     for pat, rep in corrections:
         text, n = re.subn(pat, rep, text)
         report_counts["فاصلهٔ داخلی علائم سجاوندی"] += n
     return text
 
-# اصلاح فاصلهٔ قبل از علائم سجاوندی با در نظر داشتن استثناءها
 def fix_space_before_punct(text, report_counts):
     def repl(match):
         punct = match.group(1)
         if punct in "([«":
-            if match.start()==0:
-                return punct
-            elif text[match.start()-1]!=" ":
-                return " "+punct
-            else:
-                return match.group(0)
-        else:
-            return punct
+            if match.start()==0 or text[match.start()-1]==" ": return match.group(0)
+            return " "+punct
+        return punct
     new_text, n = re.subn(r"\s*([،؛:؟!.»\]\)\}])", repl, text)
-    if n:
-        report_counts["فاصلهٔ قبل از علائم سجاوندی"] += n
+    if n: report_counts["فاصلهٔ قبل از علائم سجاوندی"] += n
     return new_text
 
-# حذف فاصله‌های اضافه بین واژه‌ها
 def fix_extra_spaces(text, report_counts):
-    text, n1 = re.subn(r"\s+([،؛؟.\)»\]\}\⟩])", r"\1", text)
-    report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n1
-    text, n2 = re.subn(r"[ ]{2,}", " ", text)
-    report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n2
+    text, n1 = re.subn(r"\s+([،؛؟.\)»\]\}\⟩])", r"\1", text); report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n1
+    text, n2 = re.subn(r"[ ]{2,}", " ", text); report_counts["فاصلهٔ اضافه بین واژه‌ها"] += n2
     return text
 
-# جایگزینی سه‌نقطهٔ پشت سر هم با «…»
 def fix_ellipsis(text, report_counts):
     def replace_ellipsis(match):
         report_counts["سه‌نقطهٔ تعلیق"] +=1
         return "…"
-    text, _ = re.subn(r"\.{3,}", replace_ellipsis, text)
-    return text
+    return re.subn(r"\.{3,}", replace_ellipsis, text)[0]
 
-# تبدیل نیم‌فاصله‌های کاذب به نیم‌فاصلهٔ واقعی
 def fix_fake_hyphens_with_zwnj(text, report_counts):
     fake_chars = ['\u00AD','\u00AC','\u200F','\u2005','\uFEFF','\u200B','\u200D']
     total_count = 0
     for ch in fake_chars:
         n = text.count(ch)
-        if n:
-            text = text.replace(ch,ZWNJ)
-            total_count += n
+        if n: text = text.replace(ch,ZWNJ); total_count += n
     report_counts["نیم‌فاصلهٔ کاذب"] += total_count
     return text
 
-# اجرای همهٔ اصلاحات به ترتیب روی متن
+# --- تغییر در تابع fix_all برای استفاده از نام Enum ---
 def fix_all(text, options, report_counts):
     pipeline = []
-    if options.get("fix_k_y", True): pipeline.append(fix_k_y)
-    if options.get("fix_numbers_en", True): pipeline.append(fix_numbers_en_func)
-    if options.get("fix_numbers_ar", True): pipeline.append(fix_numbers_ar_func)
-    if options.get("fix_punct", True): pipeline.append(fix_punct)
-    if options.get("fix_quotes", True): pipeline.append(fix_quotes)
-    if options.get("fix_he_ye", True): pipeline.append(fix_he_ye)
-    if options.get("fix_me_nemi", True): pipeline.append(fix_me_nemi)
-    if options.get("fix_prefix_verbs", True): pipeline.append(fix_prefix_verbs)
-    if options.get("fix_suffixes", True): pipeline.append(fix_suffixes)
-    if options.get("fix_dict", True): pipeline.append(fix_dict)
-    if options.get("fix_spaces", True): pipeline.append(fix_spaces)
-    if options.get("fix_space_before_punct", True): pipeline.append(fix_space_before_punct)
-    if options.get("fix_extra_spaces", True): pipeline.append(fix_extra_spaces)
-    if options.get("fix_ellipsis", True): pipeline.append(fix_ellipsis)
-    if options.get("fix_fake_hyphens", True): pipeline.append(fix_fake_hyphens_with_zwnj)
+    # استفاده از نام ثابت‌های Enum برای بررسی تنظیمات
+    if options.get(FixOption.FIX_K_Y.name, True): pipeline.append(fix_k_y)
+    if options.get(FixOption.FIX_NUMBERS_EN.name, True): pipeline.append(fix_numbers_en_func)
+    if options.get(FixOption.FIX_NUMBERS_AR.name, True): pipeline.append(fix_numbers_ar_func)
+    if options.get(FixOption.FIX_PUNCT.name, True): pipeline.append(fix_punct)
+    if options.get(FixOption.FIX_QUOTES.name, True): pipeline.append(fix_quotes)
+    if options.get(FixOption.FIX_HE_YE.name, True): pipeline.append(fix_he_ye)
+    if options.get(FixOption.FIX_ME_NEMI.name, True): pipeline.append(fix_me_nemi)
+    if options.get(FixOption.FIX_PREFIX_VERBS.name, True): pipeline.append(fix_prefix_verbs)
+    if options.get(FixOption.FIX_SUFFIXES.name, True): pipeline.append(fix_suffixes)
+    if options.get(FixOption.FIX_DICT.name, True): pipeline.append(fix_dict)
+    if options.get(FixOption.FIX_SPACES.name, True): pipeline.append(fix_spaces)
+    if options.get(FixOption.FIX_SPACE_BEFORE_PUNCT.name, True): pipeline.append(fix_space_before_punct)
+    if options.get(FixOption.FIX_EXTRA_SPACES.name, True): pipeline.append(fix_extra_spaces)
+    if options.get(FixOption.FIX_ELLIPSIS.name, True): pipeline.append(fix_ellipsis)
+    if options.get(FixOption.FIX_FAKE_HYPHENS.name, True): pipeline.append(fix_fake_hyphens_with_zwnj)
+    
     for func in pipeline:
         text = func(text, report_counts)
     return text
@@ -489,48 +399,31 @@ def fix_text_full(event=None):
         smgr = ctx.ServiceManager
         desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
         doc = desktop.getCurrentComponent()
-        if not doc or not doc.supportsService("com.sun.star.text.TextDocument"):
-            return
+        if not doc or not doc.supportsService("com.sun.star.text.TextDocument"): return
 
         options = load_config()
         options = show_dialog(options)
-
-        # --- تغییر اصلی در این خط (پیشنهاد شماره ۴) ---
-        # به جای تعریف طولانی دیکشنری، از تابع مرکزی استفاده می‌کنیم
         report_counts = get_initial_report_counts()
 
-        # ---------- تشخیص واقعی وجود انتخاب ----------
         selections = doc.CurrentSelection
         has_nonempty_selection = False
-        try:
-            count = selections.getCount()
-        except Exception:
-            count = 0
+        try: count = selections.getCount()
+        except Exception: count = 0
 
         for i in range(count):
-            try:
-                sel = selections.getByIndex(i)
-            except Exception:
-                continue
-            if not hasattr(sel, "String"):
-                continue
-            s = sel.String
-            if s and s.strip():
-                has_nonempty_selection = True
-                break
+            try: sel = selections.getByIndex(i)
+            except Exception: continue
+            if not hasattr(sel, "String"): continue
+            if sel.String and sel.String.strip(): has_nonempty_selection = True; break
 
         if has_nonempty_selection:
             for i in range(count):
-                try:
-                    sel = selections.getByIndex(i)
-                except Exception:
-                    continue
-                if not hasattr(sel, "String"):
-                    continue
+                try: sel = selections.getByIndex(i)
+                except Exception: continue
+                if not hasattr(sel, "String"): continue
                 old_text = sel.String
                 new_text = fix_all(old_text, options, report_counts)
-                if new_text != old_text:
-                    sel.String = new_text
+                if new_text != old_text: sel.String = new_text
         else:
             text = doc.Text
             cursor = text.createTextCursor()
@@ -540,48 +433,29 @@ def fix_text_full(event=None):
                 old_text = cursor.getString()
                 if old_text:
                     new_text = fix_all(old_text, options, report_counts)
-                    if new_text != old_text:
-                        cursor.setString(new_text)
-                if not cursor.gotoNextParagraph(False):
-                    break
+                    if new_text != old_text: cursor.setString(new_text)
+                if not cursor.gotoNextParagraph(False): break
 
-        # نمایش گزارش
         total = sum(report_counts.values())
         try:
             parent_win = doc.CurrentController.Frame.ContainerWindow
             mb = parent_win.getToolkit().createMessageBox(
-                parent_win, MESSAGEBOX, MBButtons.BUTTONS_OK,
-                "گزارش اصلاح متن",
-                (
-                    f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n"
-                    + "\n".join(f"{k}: {en_numbers_to_fa(str(v))}" for k,v in report_counts.items() if v>0)
-                    if total>0 else "هیچ اصلاحی لازم نبود."
-                )
+                parent_win, MESSAGEBOX, MBButtons.BUTTONS_OK, "گزارش اصلاح متن",
+                (f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n" + "\n".join(f"{k}: {en_numbers_to_fa(str(v))}" for k,v in report_counts.items() if v>0) if total>0 else "هیچ اصلاحی لازم نبود.")
             )
             mb.execute()
-        except Exception as e:
-            log_error("fix_text_full - MessageBox", e)
+        except Exception as e: log_error("fix_text_full - MessageBox", e)
 
-        # ذخیره فایل گزارش
         try:
             url = doc.URL
-            if not url:
-                folder = os.path.expanduser("~")
-                filename = "Untitled"
-            else:
-                folder = os.path.dirname(unquote(urlparse(url).path))
-                filename = os.path.basename(unquote(urlparse(url).path))
+            if not url: folder, filename = os.path.expanduser("~"), "Untitled"
+            else: folder, filename = os.path.dirname(unquote(urlparse(url).path)), os.path.basename(unquote(urlparse(url).path))
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-            report_filename = f"Paknevis Report [{now}].txt"
-            report_path = os.path.join(folder, report_filename)
+            report_path = os.path.join(folder, f"Paknevis Report [{now}].txt")
             with open(report_path, "w", encoding="utf-8") as f:
-                f.write(f"نام فایل: {filename}\n\n")
-                f.write(f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n")
+                f.write(f"نام فایل: {filename}\n\nمجموع اصلاحات: {en_numbers_to_fa(str(total))}\n")
                 for k,v in report_counts.items():
-                    if v>0:
-                        f.write(f"{k}: {en_numbers_to_fa(str(v))}\n")
-        except Exception as e:
-            log_error("fix_text_full - write report file", e)
+                    if v>0: f.write(f"{k}: {en_numbers_to_fa(str(v))}\n")
+        except Exception as e: log_error("fix_text_full - write report file", e)
 
-    except Exception as e:
-        log_error("fix_text_full", e)
+    except Exception as e: log_error("fix_text_full", e)
