@@ -12,28 +12,8 @@ from enum import Enum, auto # <-- وارد کردن کتابخانه Enum
 
 ZWNJ = "\u200c"
 
-# ---------- مسیر فایل‌های تنظیمات و جایگذاری، مستقل از سیستم‌عامل) ----------
-def get_user_script_path():
-    """این تابع مسیر پوشه اسکریپت کاربر را به صورت خودکار و با پشتیبانی از نسخه‌های قدیمی پیدا می‌کند."""
-    try:
-        # روش مدرن و استاندارد
-        ctx = uno.getComponentContext()
-        smgr = ctx.ServiceManager
-        path_sub = smgr.createInstanceWithContext("com.sun.star.util.PathSubstitution", ctx)
-        user_path = path_sub.substituteVariables("$(user)/Scripts/python", False)
-        # اطمینان از وجود پوشه
-        os.makedirs(user_path, exist_ok=True)
-        return user_path
-    except Exception:
-        # روش پشتیبان (Fallback) در صورت بروز خطا
-        log_error("get_user_script_path", "PathSubstitution failed, using fallback.")
-        # ایجاد یک مسیر عمومی در پوشه اصلی کاربر
-        fallback_dir = os.path.join(os.path.expanduser("~"), "LibreOfficeScripts")
-        os.makedirs(fallback_dir, exist_ok=True)
-        return fallback_dir
-
-# تعریف مسیرها با استفاده از تابع جدید
-BASE_DIR = get_user_script_path()
+# ---------- مسیر فایل‌های تنظیمات ----------
+BASE_DIR = os.path.join(os.path.expanduser("~"), ".config", "libreoffice", "4", "user", "Scripts", "python")
 CONFIG_FILE = os.path.join(BASE_DIR, "TextFixer.conf")
 REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.json")
 LOG_FILE = os.path.join(BASE_DIR, "TextFixer.log")
