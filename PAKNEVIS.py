@@ -158,6 +158,7 @@ class MyTopWindowListener(unohelper.Base, XTopWindowListener):
     def windowActivated(self, ev): pass
     def windowDeactivated(self, ev): pass
 
+# --- تابع اصلاح‌شده ---
 def show_dialog(options):
     try:
         ctx = uno.getComponentContext()
@@ -168,7 +169,6 @@ def show_dialog(options):
         dialog.setModel(dialog_model)
         dialog.setTitle("گزینش اصلاح‌ها")
 
-        # --- استفاده از Enum برای ساخت آیتم‌های دیالوگ ---
         items = FixOption.get_dialog_items()
 
         item_height = 15
@@ -176,7 +176,7 @@ def show_dialog(options):
         padding_bottom = 30
         btn_height = 15
         dialog_height = padding_top + len(items) * item_height + padding_bottom
-        dialog_width = 320
+        dialog_width = 140
         dialog_model.setPropertyValue("Width", dialog_width)
         dialog_model.setPropertyValue("Height", dialog_height)
         dialog_model.setPropertyValue("PositionX", 100)
@@ -197,12 +197,21 @@ def show_dialog(options):
         btn_ok = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
         btn_ok.setPropertyValue("PositionX", 10)
         btn_ok.setPropertyValue("PositionY", y)
-        btn_ok.setPropertyValue("Width", 70)
+        btn_ok.setPropertyValue("Width", 40)
         btn_ok.setPropertyValue("Height", btn_height)
         btn_ok.setPropertyValue("Label", "اجرا")
-        btn_ok.setPropertyValue("PushButtonType", 1)
+        btn_ok.setPropertyValue("PushButtonType", 1) # 1 = OK
         btn_ok.setPropertyValue("DefaultButton", True)
         dialog_model.insertByName("btn_ok", btn_ok)
+
+        btn_cancel = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        btn_cancel.setPropertyValue("PositionX", 90)
+        btn_cancel.setPropertyValue("PositionY", y)
+        btn_cancel.setPropertyValue("Width", 40)
+        btn_cancel.setPropertyValue("Height", btn_height)
+        btn_cancel.setPropertyValue("Label", "انصراف")
+        btn_cancel.setPropertyValue("PushButtonType", 2) # 2 = Cancel
+        dialog_model.insertByName("btn_cancel", btn_cancel)
 
         dialog.createPeer(toolkit, None)
         try:
@@ -215,17 +224,22 @@ def show_dialog(options):
         except Exception as e: log_error("show_dialog - getPeer", e)
 
         result = dialog.execute()
-        if result == 1:
+        
+        # --- منطق اصلاح‌شده ---
+        if result == 1:  # فقط اگر روی دکمه "اجرا" کلیک شد
             selected = {key: dialog.getControl(key).getState() == 1 for key, _ in items}
             save_config(selected)
-        else:
-            selected = options.copy()
+            dialog.dispose()
+            return True, selected  # بازگشت True و تنظیمات جدید
+        else:  # اگر روی "انصراف" کلیک شد یا پنجره بسته شد
+            dialog.dispose()
+            return False, options.copy() # بازگشت False و تنظیمات اصلی
 
-        dialog.dispose()
-        return selected
     except Exception as e:
         log_error("show_dialog", e)
-        return options.copy()
+        try: dialog.dispose()
+        except: pass
+        return False, options.copy() # در صورت خطا هم انصراف را برگردان
 
 # ---------- توابع اصلاح متن ----------
 def fix_k_y(text, report_counts):
@@ -368,10 +382,8 @@ def fix_fake_hyphens_with_zwnj(text, report_counts):
     report_counts["نیم‌فاصلهٔ کاذب"] += total_count
     return text
 
-# --- تغییر در تابع fix_all برای استفاده از نام Enum ---
 def fix_all(text, options, report_counts):
     pipeline = []
-    # استفاده از نام ثابت‌های Enum برای بررسی تنظیمات
     if options.get(FixOption.FIX_K_Y.name, True): pipeline.append(fix_k_y)
     if options.get(FixOption.FIX_NUMBERS_EN.name, True): pipeline.append(fix_numbers_en_func)
     if options.get(FixOption.FIX_NUMBERS_AR.name, True): pipeline.append(fix_numbers_ar_func)
@@ -393,6 +405,7 @@ def fix_all(text, options, report_counts):
     return text
 
 # ---------- ماکروی اصلی ----------
+# --- تابع اصلاح‌شده ---
 def fix_text_full(event=None):
     try:
         ctx = uno.getComponentContext()
@@ -402,7 +415,17 @@ def fix_text_full(event=None):
         if not doc or not doc.supportsService("com.sun.star.text.TextDocument"): return
 
         options = load_config()
-        options = show_dialog(options)
+        
+        # --- تغییر در این خط ---
+        # فراخوانی تابع و دریافت دو مقدار بازگشتی
+        should_proceed, options = show_dialog(options)
+
+        # --- این بخش جدید اضافه شده ---
+        # اگر کاربر روی انصراف کلیک کرده بود، از تابع خارج شو
+        if not should_proceed:
+            return
+
+        # --- بقیه کد بدون تغییر باقی می‌ماند ---
         report_counts = get_initial_report_counts()
 
         selections = doc.CurrentSelection
