@@ -504,7 +504,7 @@ def show_report_dialog(report_rows, parent_window, ctx):
             description_width = min(180, max(40, len(description) * 2 + 4))
             description_x = dialog_width - 10 - description_width
             colon_x = description_x - 9
-            count_text = f"اصلاح {en_numbers_to_fa(str(count))}"
+            count_text = f"{en_numbers_to_fa(str(count))} اصلاح"
             count_width = max(44, len(count_text) * 7 + 4)
             count_x = colon_x - count_width - 2
 
