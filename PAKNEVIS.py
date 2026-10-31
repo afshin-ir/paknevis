@@ -193,9 +193,17 @@ class MyTopWindowListener(unohelper.Base, XTopWindowListener):
     def windowDeactivated(self, ev): pass
 
 # --- تابع اصلاح‌شده ---
-def show_dialog(options):
+def get_component_context(component_context=None):
+    if component_context is not None:
+        return component_context
     try:
-        ctx = uno.getComponentContext()
+        return XSCRIPTCONTEXT.getComponentContext()
+    except NameError:
+        return uno.getComponentContext()
+
+
+def show_dialog(options, ctx):
+    try:
         smgr = ctx.ServiceManager
         toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
         dialog_model = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", ctx)
@@ -457,8 +465,7 @@ def fix_all(text, options, report_counts):
         text = func(text, report_counts)
     return text
 
-def show_report_dialog(report_text, parent_window):
-    ctx = uno.getComponentContext()
+def show_report_dialog(report_text, parent_window, ctx):
     smgr = ctx.ServiceManager
     toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
     dialog_model = smgr.createInstanceWithContext(
@@ -513,9 +520,9 @@ def show_report_dialog(report_text, parent_window):
 
 # ---------- ماکروی اصلی ----------
 # --- تابع اصلاح‌شده ---
-def fix_text_full(event=None):
+def fix_text_full(event=None, component_context=None):
     try:
-        ctx = uno.getComponentContext()
+        ctx = get_component_context(component_context)
         smgr = ctx.ServiceManager
         desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
         doc = desktop.getCurrentComponent()
@@ -525,7 +532,7 @@ def fix_text_full(event=None):
         
         # --- تغییر در این خط ---
         # فراخوانی تابع و دریافت دو مقدار بازگشتی
-        should_proceed, options = show_dialog(options)
+        should_proceed, options = show_dialog(options, ctx)
 
         # --- این بخش جدید اضافه شده ---
         # اگر کاربر روی انصراف کلیک کرده بود، از تابع خارج شو
@@ -579,7 +586,7 @@ def fix_text_full(event=None):
         )
         try:
             parent_win = doc.CurrentController.Frame.ContainerWindow
-            show_report_dialog(report_text, parent_win)
+            show_report_dialog(report_text, parent_win, ctx)
         except Exception as e:
             log_error("fix_text_full - RTL report dialog", e)
             try:
@@ -610,8 +617,11 @@ def fix_text_full(event=None):
 g_exportedScripts = (fix_text_full,)
 
 class PaknevisJob(unohelper.Base, XJobExecutor):
+    def __init__(self, ctx):
+        self.ctx = ctx
+
     def trigger(self, args):
-        fix_text_full()
+        fix_text_full(component_context=self.ctx)
 
 
 g_ImplementationHelper = unohelper.ImplementationHelper()
