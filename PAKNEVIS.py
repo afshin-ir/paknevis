@@ -501,18 +501,28 @@ def show_report_dialog(report_rows, parent_window, ctx):
         add_label("empty_report", "هیچ اصلاحی لازم نبود.", 10, dialog_width - 20, 2)
     else:
         for current_row, (description, count) in enumerate(report_rows):
+            description_width = min(180, max(40, len(description) * 2 + 4))
+            description_x = dialog_width - 10 - description_width
+            colon_x = description_x - 9
+            count_x = colon_x - 30
+            unit_x = count_x - 42
+
             add_label(
-                f"description_{current_row}", description, 90, 180, 2
+                f"description_{current_row}",
+                description,
+                description_x,
+                description_width,
+                2,
             )
-            add_label(f"colon_{current_row}", ":", 80, 10, 1)
+            add_label(f"colon_{current_row}", ":", colon_x, 8, 1)
             add_label(
                 f"count_{current_row}",
                 en_numbers_to_fa(str(count)),
-                48,
+                count_x,
                 28,
                 1,
             )
-            add_label(f"unit_{current_row}", "اصلاح", 5, 40, 1)
+            add_label(f"unit_{current_row}", "اصلاح", unit_x, 40, 1)
 
     close_button = dialog_model.createInstance(
         "com.sun.star.awt.UnoControlButtonModel"
