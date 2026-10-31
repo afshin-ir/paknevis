@@ -14,24 +14,32 @@ from enum import Enum, auto # <-- وارد کردن کتابخانه Enum
 ZWNJ = "\u200c"
 
 # ---------- مسیر فایل‌های تنظیمات ----------
-if os.name == "nt":
-    user_profile_dir = os.path.join(
-        os.environ.get("APPDATA", os.path.expanduser("~")),
-        "LibreOffice", "4", "user",
-    )
-elif sys.platform == "darwin":
-    user_profile_dir = os.path.join(
-        os.path.expanduser("~"), "Library", "Application Support",
-        "LibreOffice", "4", "user",
-    )
-else:
-    config_dir = os.environ.get(
-        "XDG_CONFIG_HOME",
-        os.path.join(os.path.expanduser("~"), ".config"),
-    )
-    user_profile_dir = os.path.join(config_dir, "libreoffice", "4", "user")
+def get_user_profile_dir():
+    try:
+        ctx = uno.getComponentContext()
+        path_settings = ctx.ServiceManager.createInstanceWithContext(
+            "com.sun.star.util.PathSettings", ctx
+        )
+        return uno.fileUrlToSystemPath(path_settings.UserConfig)
+    except Exception:
+        if os.name == "nt":
+            return os.path.join(
+                os.environ.get("APPDATA", os.path.expanduser("~")),
+                "LibreOffice", "4", "user",
+            )
+        if sys.platform == "darwin":
+            return os.path.join(
+                os.path.expanduser("~"), "Library", "Application Support",
+                "LibreOffice", "4", "user",
+            )
+        config_dir = os.environ.get(
+            "XDG_CONFIG_HOME",
+            os.path.join(os.path.expanduser("~"), ".config"),
+        )
+        return os.path.join(config_dir, "libreoffice", "4", "user")
 
-BASE_DIR = os.path.join(user_profile_dir, "Scripts", "python")
+
+BASE_DIR = os.path.join(get_user_profile_dir(), "Scripts", "python")
 CONFIG_FILE = os.path.join(BASE_DIR, "TextFixer.conf")
 REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.json")
 LOG_FILE = os.path.join(BASE_DIR, "TextFixer.log")
