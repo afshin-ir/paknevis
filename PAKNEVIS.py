@@ -470,9 +470,7 @@ def format_rtl_report(report_text):
     for line in report_text.splitlines():
         if ": " in line:
             description, count = line.rsplit(": ", 1)
-            line = f"\u202b{description}: {count} اصلاح\u202c"
-        else:
-            line = f"\u202b{line}\u202c"
+            line = f"{description}: {count} اصلاح"
         lines.append(line)
     return "\n".join(lines)
 
@@ -508,7 +506,7 @@ def show_report_dialog(report_text, parent_window, ctx):
     report_model.setPropertyValue("VScroll", True)
     report_model.setPropertyValue("HScroll", False)
     report_model.setPropertyValue("Align", 2)
-    report_model.setPropertyValue("WritingMode", 1)  # RL_TB
+    report_model.setPropertyValue("WritingMode", 0)  # Keep natural bidirectional ordering, right-aligned below
     dialog_model.insertByName("report", report_model)
 
     close_button = dialog_model.createInstance(
