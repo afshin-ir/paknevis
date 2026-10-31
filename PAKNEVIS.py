@@ -504,11 +504,9 @@ def show_report_dialog(report_rows, parent_window, ctx):
             description_width = min(180, max(40, len(description) * 2 + 4))
             description_x = dialog_width - 10 - description_width
             colon_x = description_x - 9
-            count_text = en_numbers_to_fa(str(count))
-            count_width = max(10, len(count_text) * 7 + 2)
+            count_text = f"اصلاح {en_numbers_to_fa(str(count))}"
+            count_width = max(44, len(count_text) * 7 + 4)
             count_x = colon_x - count_width - 2
-            unit_width = 40
-            unit_x = count_x - unit_width - 2
 
             add_label(
                 f"description_{current_row}",
@@ -523,13 +521,6 @@ def show_report_dialog(report_rows, parent_window, ctx):
                 count_text,
                 count_x,
                 count_width,
-                2,
-            )
-            add_label(
-                f"unit_{current_row}",
-                "اصلاح",
-                unit_x,
-                unit_width,
                 2,
             )
 
