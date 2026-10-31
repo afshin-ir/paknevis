@@ -470,9 +470,9 @@ def format_rtl_report(report_text):
     for line in report_text.splitlines():
         if ": " in line:
             description, count = line.rsplit(": ", 1)
-            line = f"\u200f{description}\u200f: \u200e{count}\u200e"
+            line = f"\u202b{description}: \u202a{count}\u202c\u202c"
         else:
-            line = f"\u200f{line}"
+            line = f"\u202b{line}\u202c"
         lines.append(line)
     return "\n".join(lines)
 
