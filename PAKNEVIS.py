@@ -219,10 +219,10 @@ def show_dialog(options, ctx):
         items = FixOption.get_dialog_items()
         dialog_width = 155
         margin = 10
-        item_height = 15
-        list_top = 34
+        item_height = 13
+        list_top = 31
         button_height = 17
-        button_y = list_top + len(items) * item_height + 9
+        button_y = list_top + len(items) * item_height + 8
         dialog_height = button_y + button_height + 10
 
         dialog_model.setPropertyValue("Width", dialog_width)
