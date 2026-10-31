@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import json
 import uno
 import unohelper
@@ -13,7 +14,24 @@ from enum import Enum, auto # <-- وارد کردن کتابخانه Enum
 ZWNJ = "\u200c"
 
 # ---------- مسیر فایل‌های تنظیمات ----------
-BASE_DIR = os.path.join(os.path.expanduser("~"), ".config", "libreoffice", "4", "user", "Scripts", "python")
+if os.name == "nt":
+    user_profile_dir = os.path.join(
+        os.environ.get("APPDATA", os.path.expanduser("~")),
+        "LibreOffice", "4", "user",
+    )
+elif sys.platform == "darwin":
+    user_profile_dir = os.path.join(
+        os.path.expanduser("~"), "Library", "Application Support",
+        "LibreOffice", "4", "user",
+    )
+else:
+    config_dir = os.environ.get(
+        "XDG_CONFIG_HOME",
+        os.path.join(os.path.expanduser("~"), ".config"),
+    )
+    user_profile_dir = os.path.join(config_dir, "libreoffice", "4", "user")
+
+BASE_DIR = os.path.join(user_profile_dir, "Scripts", "python")
 CONFIG_FILE = os.path.join(BASE_DIR, "TextFixer.conf")
 REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.json")
 LOG_FILE = os.path.join(BASE_DIR, "TextFixer.log")
