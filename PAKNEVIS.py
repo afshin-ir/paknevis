@@ -520,7 +520,29 @@ def show_report_dialog(report_text, parent_window, ctx):
 
 # ---------- ماکروی اصلی ----------
 # --- تابع اصلاح‌شده ---
+def update_status_indicator(indicator, processed):
+    if indicator is None or processed % 25:
+        return
+    try:
+        indicator.setText(
+            f"پاک‌نویس: بررسی {en_numbers_to_fa(str(processed))} بند…"
+        )
+    except Exception as e:
+        log_error("fix_text_full - update status indicator", e)
+
+
+def end_status_indicator(indicator):
+    if indicator is None:
+        return
+    try:
+        indicator.end()
+    except Exception as e:
+        log_error("fix_text_full - end status indicator", e)
+
+
 def fix_text_full(event=None, component_context=None):
+    status_indicator = None
+    processed_paragraphs = 0
     try:
         ctx = get_component_context(component_context)
         smgr = ctx.ServiceManager
@@ -538,6 +560,13 @@ def fix_text_full(event=None, component_context=None):
         # اگر کاربر روی انصراف کلیک کرده بود، از تابع خارج شو
         if not should_proceed:
             return
+
+        try:
+            status_indicator = doc.CurrentController.Frame.createStatusIndicator()
+            if status_indicator:
+                status_indicator.start("پاک‌نویس در حال اصلاح متن است…", 0)
+        except Exception as e:
+            log_error("fix_text_full - start status indicator", e)
 
         # --- بقیه کد بدون تغییر باقی می‌ماند ---
         report_counts = get_initial_report_counts()
@@ -561,6 +590,8 @@ def fix_text_full(event=None, component_context=None):
                 old_text = sel.String
                 new_text = fix_all(old_text, options, report_counts)
                 if new_text != old_text: sel.String = new_text
+                processed_paragraphs += 1
+                update_status_indicator(status_indicator, processed_paragraphs)
         else:
             text = doc.Text
             cursor = text.createTextCursor()
@@ -571,8 +602,12 @@ def fix_text_full(event=None, component_context=None):
                 if old_text:
                     new_text = fix_all(old_text, options, report_counts)
                     if new_text != old_text: cursor.setString(new_text)
+                processed_paragraphs += 1
+                update_status_indicator(status_indicator, processed_paragraphs)
                 if not cursor.gotoNextParagraph(False): break
 
+        end_status_indicator(status_indicator)
+        status_indicator = None
         total = sum(report_counts.values())
         report_text = (
             f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n"
@@ -611,7 +646,9 @@ def fix_text_full(event=None, component_context=None):
                     if v>0: f.write(f"{k}: {en_numbers_to_fa(str(v))}\n")
         except Exception as e: log_error("fix_text_full - write report file", e)
 
-    except Exception as e: log_error("fix_text_full", e)
+    except Exception as e:
+        end_status_indicator(status_indicator)
+        log_error("fix_text_full", e)
 
 # ماکروهایی که LibreOffice در فهرست اجرا نشان می‌دهد.
 g_exportedScripts = (fix_text_full,)
