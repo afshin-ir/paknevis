@@ -58,7 +58,7 @@
 
 ۲. پوشهٔ `Scripts/python` را در پروفایل کاربری LibreOffice پیدا کنید. اگر این پوشه وجود ندارد، آن را بسازید. مسیرهای معمول:
 
-- ویندوز: `%APPDATA%\\LibreOffice\\4\\user\\Scripts\\python`
+- ویندوز: `%APPDATA%\LibreOffice\4\user\Scripts\python`
 - لینوکس: `$HOME/.config/libreoffice/4/user/Scripts/python`
 - macOS: `$HOME/Library/Application Support/LibreOffice/4/user/Scripts/python`
 
