@@ -6,18 +6,26 @@
     <node oor:name="OfficeMenuBar">
       <node oor:name="org.afshin.paknevis.menubar" oor:op="replace">
         <prop oor:name="Title" oor:type="xs:string">
-          <value xml:lang="en-US">پاک‌نویس…</value>
-          <value xml:lang="fa">پاک‌نویس…</value>
+          <value xml:lang="en-US">پاک‌نویس</value>
+          <value xml:lang="fa">پاک‌نویس</value>
         </prop>
         <prop oor:name="Context" oor:type="xs:string">
           <value>com.sun.star.text.TextDocument</value>
         </prop>
-        <prop oor:name="URL" oor:type="xs:string">
-          <value>service:org.afshin.paknevis.Job?Run</value>
-        </prop>
-        <prop oor:name="Target" oor:type="xs:string">
-          <value>_self</value>
-        </prop>
+        <node oor:name="Submenu">
+          <node oor:name="Run" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="en-US">گزینش اصلاح‌ها…</value>
+              <value xml:lang="fa">گزینش اصلاح‌ها…</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:org.afshin.paknevis.Job?Run</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string">
+              <value>_self</value>
+            </prop>
+          </node>
+        </node>
       </node>
     </node>
   </node>
