@@ -602,3 +602,6 @@ def fix_text_full(event=None):
         except Exception as e: log_error("fix_text_full - write report file", e)
 
     except Exception as e: log_error("fix_text_full", e)
+
+# ماکروهایی که LibreOffice در فهرست اجرا نشان می‌دهد.
+g_exportedScripts = (fix_text_full,)
