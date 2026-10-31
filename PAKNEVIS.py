@@ -203,85 +203,114 @@ def get_component_context(component_context=None):
 
 
 def show_dialog(options, ctx):
+    dialog = None
     try:
         smgr = ctx.ServiceManager
         toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
-        dialog_model = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", ctx)
-        dialog = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialog", ctx)
+        dialog_model = smgr.createInstanceWithContext(
+            "com.sun.star.awt.UnoControlDialogModel", ctx
+        )
+        dialog = smgr.createInstanceWithContext(
+            "com.sun.star.awt.UnoControlDialog", ctx
+        )
         dialog.setModel(dialog_model)
         dialog.setTitle("گزینش اصلاح‌ها")
 
         items = FixOption.get_dialog_items()
-
+        dialog_width = 155
+        margin = 10
         item_height = 15
-        padding_top = 10
-        padding_bottom = 30
-        btn_height = 15
-        dialog_height = padding_top + len(items) * item_height + padding_bottom
-        dialog_width = 140
+        list_top = 34
+        button_height = 17
+        button_y = list_top + len(items) * item_height + 9
+        dialog_height = button_y + button_height + 10
+
         dialog_model.setPropertyValue("Width", dialog_width)
         dialog_model.setPropertyValue("Height", dialog_height)
-        dialog_model.setPropertyValue("PositionX", 100)
-        dialog_model.setPropertyValue("PositionY", 100)
 
-        y = padding_top
-        for key, label in items:
-            cb = dialog_model.createInstance("com.sun.star.awt.UnoControlCheckBoxModel")
-            cb.setPropertyValue("PositionX", 10)
-            cb.setPropertyValue("PositionY", y)
-            cb.setPropertyValue("Width", 300)
-            cb.setPropertyValue("Height", 12)
+        intro = dialog_model.createInstance(
+            "com.sun.star.awt.UnoControlFixedTextModel"
+        )
+        intro.setPropertyValue("PositionX", margin)
+        intro.setPropertyValue("PositionY", 8)
+        intro.setPropertyValue("Width", dialog_width - 2 * margin)
+        intro.setPropertyValue("Height", 18)
+        intro.setPropertyValue(
+            "Label", "اصلاح‌هایی را که می‌خواهید روی سند اعمال شوند انتخاب کنید."
+        )
+        intro.setPropertyValue("Align", 2)
+        dialog_model.insertByName("dialog_intro", intro)
+
+        for index, (key, label) in enumerate(items):
+            cb = dialog_model.createInstance(
+                "com.sun.star.awt.UnoControlCheckBoxModel"
+            )
+            cb.setPropertyValue("PositionX", margin)
+            cb.setPropertyValue("PositionY", list_top + index * item_height)
+            cb.setPropertyValue("Width", dialog_width - 2 * margin)
+            cb.setPropertyValue("Height", 13)
             cb.setPropertyValue("Label", label)
             cb.setPropertyValue("State", 1 if options.get(key, True) else 0)
             dialog_model.insertByName(key, cb)
-            y += item_height
 
-        btn_ok = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
-        btn_ok.setPropertyValue("PositionX", 10)
-        btn_ok.setPropertyValue("PositionY", y)
-        btn_ok.setPropertyValue("Width", 40)
-        btn_ok.setPropertyValue("Height", btn_height)
+        button_width = 52
+        btn_ok = dialog_model.createInstance(
+            "com.sun.star.awt.UnoControlButtonModel"
+        )
+        btn_ok.setPropertyValue("PositionX", margin)
+        btn_ok.setPropertyValue("PositionY", button_y)
+        btn_ok.setPropertyValue("Width", button_width)
+        btn_ok.setPropertyValue("Height", button_height)
         btn_ok.setPropertyValue("Label", "اجرا")
-        btn_ok.setPropertyValue("PushButtonType", 1) # 1 = OK
+        btn_ok.setPropertyValue("PushButtonType", 1)
         btn_ok.setPropertyValue("DefaultButton", True)
         dialog_model.insertByName("btn_ok", btn_ok)
 
-        btn_cancel = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
-        btn_cancel.setPropertyValue("PositionX", 90)
-        btn_cancel.setPropertyValue("PositionY", y)
-        btn_cancel.setPropertyValue("Width", 40)
-        btn_cancel.setPropertyValue("Height", btn_height)
+        btn_cancel = dialog_model.createInstance(
+            "com.sun.star.awt.UnoControlButtonModel"
+        )
+        btn_cancel.setPropertyValue(
+            "PositionX", dialog_width - margin - button_width
+        )
+        btn_cancel.setPropertyValue("PositionY", button_y)
+        btn_cancel.setPropertyValue("Width", button_width)
+        btn_cancel.setPropertyValue("Height", button_height)
         btn_cancel.setPropertyValue("Label", "انصراف")
-        btn_cancel.setPropertyValue("PushButtonType", 2) # 2 = Cancel
+        btn_cancel.setPropertyValue("PushButtonType", 2)
         dialog_model.insertByName("btn_cancel", btn_cancel)
 
         dialog.createPeer(toolkit, None)
         try:
             peer = dialog.getPeer()
             listener = MyTopWindowListener()
-            try: peer.addTopWindowListener(listener)
+            try:
+                peer.addTopWindowListener(listener)
             except Exception as e1:
-                try: peer.getContainerWindow().addTopWindowListener(listener)
-                except Exception as e2: log_error("show_dialog - addTopWindowListener", e2)
-        except Exception as e: log_error("show_dialog - getPeer", e)
+                try:
+                    peer.getContainerWindow().addTopWindowListener(listener)
+                except Exception as e2:
+                    log_error("show_dialog - addTopWindowListener", e2)
+        except Exception as e:
+            log_error("show_dialog - getPeer", e)
 
         result = dialog.execute()
-        
-        # --- منطق اصلاح‌شده ---
-        if result == 1:  # فقط اگر روی دکمه "اجرا" کلیک شد
-            selected = {key: dialog.getControl(key).getState() == 1 for key, _ in items}
+        if result == 1:
+            selected = {
+                key: dialog.getControl(key).getState() == 1
+                for key, _ in items
+            }
             save_config(selected)
-            dialog.dispose()
-            return True, selected  # بازگشت True و تنظیمات جدید
-        else:  # اگر روی "انصراف" کلیک شد یا پنجره بسته شد
-            dialog.dispose()
-            return False, options.copy() # بازگشت False و تنظیمات اصلی
-
+            return True, selected
+        return False, options.copy()
     except Exception as e:
         log_error("show_dialog", e)
-        try: dialog.dispose()
-        except: pass
-        return False, options.copy() # در صورت خطا هم انصراف را برگردان
+        return False, options.copy()
+    finally:
+        if dialog is not None:
+            try:
+                dialog.dispose()
+            except Exception:
+                pass
 
 # ---------- توابع اصلاح متن ----------
 def fix_k_y(text, report_counts):
@@ -477,69 +506,94 @@ def show_report_dialog(report_rows, parent_window, ctx):
     dialog.setModel(dialog_model)
     dialog.setTitle("گزارش اصلاح متن")
 
-    row_count = max(1, len(report_rows))
-    row_height = 16
-    dialog_height = min(max(90, row_count * row_height + 45), 380)
-    dialog_width = 280
+    dialog_width = 260
+    row_height = 14
+    top_margin = 12
+    detail_top = 40
+    detail_rows = max(0, len(report_rows) - 1)
+    dialog_height = min(max(100, detail_top + max(1, detail_rows) * row_height + 40), 380)
     dialog_model.setPropertyValue("Width", dialog_width)
     dialog_model.setPropertyValue("Height", dialog_height)
 
-    def add_label(name, text, x, width, align):
+    description_width = 150
+    colon_width = 8
+    count_width = 26
+    unit_width = 34
+    column_gap = 5
+    right_margin = 12
+
+    description_x = dialog_width - right_margin - description_width
+    colon_x = description_x - column_gap - colon_width
+    count_x = colon_x - column_gap - count_width
+    unit_x = count_x - column_gap - unit_width
+
+    def add_label(name, text, x, y, width, align=2, bold=False):
         control = dialog_model.createInstance(
             "com.sun.star.awt.UnoControlFixedTextModel"
         )
         control.setPropertyValue("PositionX", x)
-        control.setPropertyValue("PositionY", 10 + row_height * current_row)
+        control.setPropertyValue("PositionY", y)
         control.setPropertyValue("Width", width)
-        control.setPropertyValue("Height", 15)
+        control.setPropertyValue("Height", 13)
         control.setPropertyValue("Label", text)
         control.setPropertyValue("Align", align)
+        if bold:
+            try:
+                font = control.getPropertyValue("FontDescriptor")
+                font.Weight = 150.0
+                control.setPropertyValue("FontDescriptor", font)
+            except Exception:
+                pass
         dialog_model.insertByName(name, control)
 
     if not report_rows:
-        current_row = 0
-        add_label("empty_report", "هیچ اصلاحی لازم نبود.", 10, dialog_width - 20, 2)
+        add_label(
+            "empty_report", "هیچ اصلاحی لازم نبود.",
+            right_margin, 24, dialog_width - 2 * right_margin, align=1, bold=True,
+        )
     else:
-        for current_row, (description, count) in enumerate(report_rows):
-            description_width = min(180, max(40, len(description) * 2 + 4))
-            description_x = dialog_width - 10 - description_width
-            colon_x = description_x - 9
-            count_text = en_numbers_to_fa(str(count))
-            count_width = max(6, len(count_text) * 5 + 1)
-            count_x = colon_x - count_width - 2
-            unit_width = 40
-            unit_x = count_x - unit_width - 2
+        description, count = report_rows[0]
+        add_label(
+            "total_description", description, description_x, top_margin,
+            description_width, bold=True,
+        )
+        add_label(
+            "total_colon", ":", colon_x, top_margin, colon_width, align=1, bold=True,
+        )
+        add_label(
+            "total_count", en_numbers_to_fa(str(count)), count_x, top_margin,
+            count_width, align=1, bold=True,
+        )
+        add_label(
+            "total_unit", "اصلاح", unit_x, top_margin, unit_width, bold=True,
+        )
 
+        for index, (description, count) in enumerate(report_rows[1:]):
+            y = detail_top + index * row_height
             add_label(
-                f"description_{current_row}",
-                description,
-                description_x,
+                f"description_{index}", description, description_x, y,
                 description_width,
-                2,
-            )
-            add_label(f"colon_{current_row}", ":", colon_x, 8, 1)
-            add_label(
-                f"count_{current_row}",
-                count_text,
-                count_x,
-                count_width,
-                2,
             )
             add_label(
-                f"unit_{current_row}",
-                "اصلاح",
-                unit_x,
-                unit_width,
-                2,
+                f"colon_{index}", ":", colon_x, y, colon_width, align=1,
+            )
+            add_label(
+                f"count_{index}", en_numbers_to_fa(str(count)), count_x, y,
+                count_width, align=1,
+            )
+            add_label(
+                f"unit_{index}", "اصلاح", unit_x, y, unit_width,
             )
 
     close_button = dialog_model.createInstance(
         "com.sun.star.awt.UnoControlButtonModel"
     )
-    close_button.setPropertyValue("PositionX", (dialog_width - 50) // 2)
-    close_button.setPropertyValue("PositionY", dialog_height - 25)
-    close_button.setPropertyValue("Width", 50)
-    close_button.setPropertyValue("Height", 15)
+    button_width = 60
+    button_height = 17
+    close_button.setPropertyValue("PositionX", (dialog_width - button_width) // 2)
+    close_button.setPropertyValue("PositionY", dialog_height - 27)
+    close_button.setPropertyValue("Width", button_width)
+    close_button.setPropertyValue("Height", button_height)
     close_button.setPropertyValue("Label", "بستن")
     close_button.setPropertyValue("PushButtonType", 1)
     close_button.setPropertyValue("DefaultButton", True)
