@@ -293,17 +293,35 @@ def fix_numbers_ar_func(text, report_counts):
 def fix_punct(text, report_counts):
     punct_map = {",":"،",";":"؛","?":"؟","$":"﷼","%":"٪"}
     for en_punct, fa_punct in punct_map.items():
+        if en_punct == ",":
+            commas_changed = [0]
+
+            def replace_comma(match):
+                if match.group(1) is not None:
+                    return match.group(1)
+                commas_changed[0] += 1
+                return fa_punct
+
+            text = re.sub(
+                r"(?<!\\d)(\\d{1,3}(?:,\\d{3})+)(?!\\d)|,",
+                replace_comma,
+                text,
+            )
+            report_counts["ویرگول انگلیسی"] += commas_changed[0]
+            continue
+
         n = text.count(en_punct)
         if n:
-            if en_punct==",": report_counts["ویرگول انگلیسی"]+=n
-            elif en_punct==";": report_counts["نقطه‌ویرگول انگلیسی"]+=n
-            elif en_punct=="?": report_counts["علامت سؤال انگلیسی"]+=n
-            elif en_punct=="%": report_counts["درصد انگلیسی"]+=n
+            if en_punct == ";":
+                report_counts["نقطه‌ویرگول انگلیسی"] += n
+            elif en_punct == "?":
+                report_counts["علامت سؤال انگلیسی"] += n
+            elif en_punct == "%":
+                report_counts["درصد انگلیسی"] += n
             text = text.replace(en_punct, fa_punct)
     text, n_q = re.subn(r"؟{2,}", "؟", text); report_counts["علامت پرسش تکراری"] += n_q
     text, n_e = re.subn(r"!{2,}", "!", text); report_counts["علامت تعجب تکراری"] += n_e
     return text
-
 def fix_quotes(text, report_counts):
     quote_chars = ['"', "'", '“', '”', '‘', '’']
     if not any(q in text for q in quote_chars): return text
