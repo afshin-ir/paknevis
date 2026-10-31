@@ -467,7 +467,7 @@ def show_report_dialog(report_text, parent_window):
     dialog.setModel(dialog_model)
     dialog.setTitle("گزارش اصلاح متن")
 
-    line_count = report_text.count("\\n") + 1
+    line_count = report_text.count("\n") + 1
     dialog_height = min(max(90, line_count * 16 + 45), 380)
     dialog_width = 280
     dialog_model.setPropertyValue("Width", dialog_width)
@@ -565,8 +565,8 @@ def fix_text_full(event=None):
 
         total = sum(report_counts.values())
         report_text = (
-            f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\\n"
-            + "\\n".join(
+            f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n"
+            + "\n".join(
                 f"{key}: {en_numbers_to_fa(str(value))}"
                 for key, value in report_counts.items()
                 if value > 0
