@@ -303,7 +303,7 @@ def fix_punct(text, report_counts):
                 return fa_punct
 
             text = re.sub(
-                r"(?<!\\d)(\\d{1,3}(?:,\\d{3})+)(?!\\d)|,",
+                r"(?<!\d)(\d{1,3}(?:,\d{3})+)(?!\d)|,",
                 replace_comma,
                 text,
             )
