@@ -342,10 +342,13 @@ def fix_suffixes(text, report_counts):
     return text
 
 def fix_dict(text, report_counts):
-    if REPLACEMENTS_PATTERN is None: return text
+    if REPLACEMENTS_PATTERN is None:
+        return text
+
     def replace_match(m):
         report_counts["غلط‌های املایی (بانک)"] += 1
         return REPLACEMENTS[m.group(0)]
+
     return REPLACEMENTS_PATTERN.sub(replace_match, text)
 def fix_spaces(text, report_counts):
     corrections = [(r"(?<=«)\s+",""), (r"\s+(?=»)", ""), (r"(?<=\()\s+",""), (r"\s+(?=\))",""), (r"(?<=\[)\s+",""), (r"\s+(?=\])",""), (r"(?<=\{)\s+",""), (r"\s+(?=\})",""), (r"(?<=⟨)\s+",""), (r"\s+(?=⟩)","")]
