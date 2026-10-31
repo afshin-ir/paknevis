@@ -7,6 +7,7 @@ import unohelper
 from com.sun.star.awt import MessageBoxButtons as MBButtons
 from com.sun.star.awt.MessageBoxType import MESSAGEBOX
 from com.sun.star.awt import XTopWindowListener
+from com.sun.star.task import XJobExecutor
 import datetime
 from urllib.parse import unquote, urlparse
 from enum import Enum, auto # <-- وارد کردن کتابخانه Enum
@@ -41,8 +42,10 @@ def get_user_profile_dir():
 
 BASE_DIR = os.path.join(get_user_profile_dir(), "Scripts", "python")
 CONFIG_FILE = os.path.join(BASE_DIR, "TextFixer.conf")
-REPLACEMENTS_FILE = os.path.join(BASE_DIR, "DocumentList.json")
+REPLACEMENTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DocumentList.json")
 LOG_FILE = os.path.join(BASE_DIR, "TextFixer.log")
+
+os.makedirs(BASE_DIR, exist_ok=True)
 
 # ---------- تعریف Enum برای تنظیمات 
 class FixOption(Enum):
@@ -605,3 +608,15 @@ def fix_text_full(event=None):
 
 # ماکروهایی که LibreOffice در فهرست اجرا نشان می‌دهد.
 g_exportedScripts = (fix_text_full,)
+
+class PaknevisJob(unohelper.Base, XJobExecutor):
+    def trigger(self, args):
+        fix_text_full()
+
+
+g_ImplementationHelper = unohelper.ImplementationHelper()
+g_ImplementationHelper.addImplementation(
+    PaknevisJob,
+    "org.afshin.paknevis.Job",
+    ("com.sun.star.task.Job",),
+)
