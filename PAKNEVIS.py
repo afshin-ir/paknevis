@@ -454,6 +454,60 @@ def fix_all(text, options, report_counts):
         text = func(text, report_counts)
     return text
 
+def show_report_dialog(report_text, parent_window):
+    ctx = uno.getComponentContext()
+    smgr = ctx.ServiceManager
+    toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
+    dialog_model = smgr.createInstanceWithContext(
+        "com.sun.star.awt.UnoControlDialogModel", ctx
+    )
+    dialog = smgr.createInstanceWithContext(
+        "com.sun.star.awt.UnoControlDialog", ctx
+    )
+    dialog.setModel(dialog_model)
+    dialog.setTitle("گزارش اصلاح متن")
+
+    line_count = report_text.count("\\n") + 1
+    dialog_height = min(max(90, line_count * 16 + 45), 380)
+    dialog_width = 280
+    dialog_model.setPropertyValue("Width", dialog_width)
+    dialog_model.setPropertyValue("Height", dialog_height)
+
+    report_model = dialog_model.createInstance(
+        "com.sun.star.awt.UnoControlEditModel"
+    )
+    report_model.setPropertyValue("PositionX", 10)
+    report_model.setPropertyValue("PositionY", 10)
+    report_model.setPropertyValue("Width", dialog_width - 20)
+    report_model.setPropertyValue("Height", dialog_height - 40)
+    report_model.setPropertyValue("Text", report_text)
+    report_model.setPropertyValue("MultiLine", True)
+    report_model.setPropertyValue("ReadOnly", True)
+    report_model.setPropertyValue("VScroll", True)
+    report_model.setPropertyValue("HScroll", False)
+    report_model.setPropertyValue("Align", 2)
+    report_model.setPropertyValue("WritingMode", 1)  # RL_TB
+    dialog_model.insertByName("report", report_model)
+
+    close_button = dialog_model.createInstance(
+        "com.sun.star.awt.UnoControlButtonModel"
+    )
+    close_button.setPropertyValue("PositionX", (dialog_width - 50) // 2)
+    close_button.setPropertyValue("PositionY", dialog_height - 25)
+    close_button.setPropertyValue("Width", 50)
+    close_button.setPropertyValue("Height", 15)
+    close_button.setPropertyValue("Label", "بستن")
+    close_button.setPropertyValue("PushButtonType", 1)
+    close_button.setPropertyValue("DefaultButton", True)
+    dialog_model.insertByName("close_button", close_button)
+
+    try:
+        dialog.createPeer(toolkit, parent_window)
+        dialog.execute()
+    finally:
+        dialog.dispose()
+
+
 # ---------- ماکروی اصلی ----------
 # --- تابع اصلاح‌شده ---
 def fix_text_full(event=None):
@@ -510,14 +564,30 @@ def fix_text_full(event=None):
                 if not cursor.gotoNextParagraph(False): break
 
         total = sum(report_counts.values())
+        report_text = (
+            f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\\n"
+            + "\\n".join(
+                f"{key}: {en_numbers_to_fa(str(value))}"
+                for key, value in report_counts.items()
+                if value > 0
+            )
+            if total > 0
+            else "هیچ اصلاحی لازم نبود."
+        )
         try:
             parent_win = doc.CurrentController.Frame.ContainerWindow
-            mb = parent_win.getToolkit().createMessageBox(
-                parent_win, MESSAGEBOX, MBButtons.BUTTONS_OK, "گزارش اصلاح متن",
-                (f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n" + "\n".join(f"{k}: {en_numbers_to_fa(str(v))}" for k,v in report_counts.items() if v>0) if total>0 else "هیچ اصلاحی لازم نبود.")
-            )
-            mb.execute()
-        except Exception as e: log_error("fix_text_full - MessageBox", e)
+            show_report_dialog(report_text, parent_win)
+        except Exception as e:
+            log_error("fix_text_full - RTL report dialog", e)
+            try:
+                parent_win = doc.CurrentController.Frame.ContainerWindow
+                mb = parent_win.getToolkit().createMessageBox(
+                    parent_win, MESSAGEBOX, MBButtons.BUTTONS_OK,
+                    "گزارش اصلاح متن", report_text
+                )
+                mb.execute()
+            except Exception as fallback_error:
+                log_error("fix_text_full - MessageBox", fallback_error)
 
         try:
             url = doc.URL
