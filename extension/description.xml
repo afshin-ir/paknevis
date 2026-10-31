@@ -2,7 +2,7 @@
 <description xmlns="http://openoffice.org/extensions/description/2006"
     xmlns:xlink="http://www.w3.org/1999/xlink">
   <identifier value="org.afshin.paknevis"/>
-  <version value="1.1.9"/>
+  <version value="1.2.0"/>
   <registration>
     <simple-license accept-by="user" default-license-id="GPL-3.0"
         suppress-on-update="true">
