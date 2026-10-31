@@ -465,17 +465,7 @@ def fix_all(text, options, report_counts):
         text = func(text, report_counts)
     return text
 
-def format_rtl_report(report_text):
-    lines = []
-    for line in report_text.splitlines():
-        if ": " in line:
-            description, count = line.rsplit(": ", 1)
-            line = f"{description}: {count} اصلاح"
-        lines.append(line)
-    return "\n".join(lines)
-
-
-def show_report_dialog(report_text, parent_window, ctx):
+def show_report_dialog(report_rows, parent_window, ctx):
     smgr = ctx.ServiceManager
     toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
     dialog_model = smgr.createInstanceWithContext(
@@ -487,27 +477,42 @@ def show_report_dialog(report_text, parent_window, ctx):
     dialog.setModel(dialog_model)
     dialog.setTitle("گزارش اصلاح متن")
 
-    line_count = report_text.count("\n") + 1
-    dialog_height = min(max(90, line_count * 16 + 45), 380)
+    row_count = max(1, len(report_rows))
+    row_height = 16
+    dialog_height = min(max(90, row_count * row_height + 45), 380)
     dialog_width = 280
     dialog_model.setPropertyValue("Width", dialog_width)
     dialog_model.setPropertyValue("Height", dialog_height)
 
-    report_model = dialog_model.createInstance(
-        "com.sun.star.awt.UnoControlEditModel"
-    )
-    report_model.setPropertyValue("PositionX", 10)
-    report_model.setPropertyValue("PositionY", 10)
-    report_model.setPropertyValue("Width", dialog_width - 20)
-    report_model.setPropertyValue("Height", dialog_height - 40)
-    report_model.setPropertyValue("Text", report_text)
-    report_model.setPropertyValue("MultiLine", True)
-    report_model.setPropertyValue("ReadOnly", True)
-    report_model.setPropertyValue("VScroll", True)
-    report_model.setPropertyValue("HScroll", False)
-    report_model.setPropertyValue("Align", 2)
-    report_model.setPropertyValue("WritingMode", 0)  # Keep natural bidirectional ordering, right-aligned below
-    dialog_model.insertByName("report", report_model)
+    def add_label(name, text, x, width, align):
+        control = dialog_model.createInstance(
+            "com.sun.star.awt.UnoControlFixedTextModel"
+        )
+        control.setPropertyValue("PositionX", x)
+        control.setPropertyValue("PositionY", 10 + row_height * current_row)
+        control.setPropertyValue("Width", width)
+        control.setPropertyValue("Height", 15)
+        control.setPropertyValue("Label", text)
+        control.setPropertyValue("Align", align)
+        dialog_model.insertByName(name, control)
+
+    if not report_rows:
+        current_row = 0
+        add_label("empty_report", "هیچ اصلاحی لازم نبود.", 10, dialog_width - 20, 2)
+    else:
+        for current_row, (description, count) in enumerate(report_rows):
+            add_label(
+                f"description_{current_row}", description, 90, 180, 2
+            )
+            add_label(f"colon_{current_row}", ":", 80, 10, 1)
+            add_label(
+                f"count_{current_row}",
+                en_numbers_to_fa(str(count)),
+                48,
+                28,
+                1,
+            )
+            add_label(f"unit_{current_row}", "اصلاح", 5, 40, 1)
 
     close_button = dialog_model.createInstance(
         "com.sun.star.awt.UnoControlButtonModel"
@@ -619,27 +624,32 @@ def fix_text_full(event=None, component_context=None):
         end_status_indicator(status_indicator)
         status_indicator = None
         total = sum(report_counts.values())
-        report_text = (
-            f"مجموع اصلاحات: {en_numbers_to_fa(str(total))}\n"
-            + "\n".join(
-                f"{key}: {en_numbers_to_fa(str(value))}"
+        report_rows = []
+        if total > 0:
+            report_rows.append(("مجموع اصلاحات", total))
+            report_rows.extend(
+                (key, value)
                 for key, value in report_counts.items()
                 if value > 0
             )
-            if total > 0
-            else "هیچ اصلاحی لازم نبود."
-        )
-        display_report_text = format_rtl_report(report_text)
         try:
             parent_win = doc.CurrentController.Frame.ContainerWindow
-            show_report_dialog(display_report_text, parent_win, ctx)
+            show_report_dialog(report_rows, parent_win, ctx)
         except Exception as e:
-            log_error("fix_text_full - RTL report dialog", e)
+            log_error("fix_text_full - report dialog", e)
             try:
                 parent_win = doc.CurrentController.Frame.ContainerWindow
+                fallback_report = (
+                    "هیچ اصلاحی لازم نبود."
+                    if total == 0
+                    else "\n".join(
+                        f"{label}: {en_numbers_to_fa(str(count))} اصلاح"
+                        for label, count in report_rows
+                    )
+                )
                 mb = parent_win.getToolkit().createMessageBox(
                     parent_win, MESSAGEBOX, MBButtons.BUTTONS_OK,
-                    "گزارش اصلاح متن", display_report_text
+                    "گزارش اصلاح متن", fallback_report
                 )
                 mb.execute()
             except Exception as fallback_error:
