@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE manifest:manifest PUBLIC "-//OpenOffice.org//DTD Manifest 1.0//EN" "Manifest.dtd">
+<manifest:manifest xmlns:manifest="http://openoffice.org/2001/manifest">
+  <manifest:file-entry
+      manifest:media-type="application/vnd.sun.star.uno-component;type=Python"
+      manifest:full-path="PAKNEVIS.py"/>
+  <manifest:file-entry
+      manifest:media-type="application/vnd.sun.star.configuration-data"
+      manifest:full-path="Addons.xcu"/>
+  <manifest:file-entry
+      manifest:media-type="application/json"
+      manifest:full-path="DocumentList.json"/>
+  <manifest:file-entry
+      manifest:media-type="text/plain"
+      manifest:full-path="registration/license.txt"/>
+</manifest:manifest>
