@@ -465,6 +465,18 @@ def fix_all(text, options, report_counts):
         text = func(text, report_counts)
     return text
 
+def format_rtl_report(report_text):
+    lines = []
+    for line in report_text.splitlines():
+        if ": " in line:
+            description, count = line.rsplit(": ", 1)
+            line = f"\u200f{description}\u200f: \u200e{count}\u200e"
+        else:
+            line = f"\u200f{line}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def show_report_dialog(report_text, parent_window, ctx):
     smgr = ctx.ServiceManager
     toolkit = smgr.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
@@ -619,16 +631,17 @@ def fix_text_full(event=None, component_context=None):
             if total > 0
             else "هیچ اصلاحی لازم نبود."
         )
+        display_report_text = format_rtl_report(report_text)
         try:
             parent_win = doc.CurrentController.Frame.ContainerWindow
-            show_report_dialog(report_text, parent_win, ctx)
+            show_report_dialog(display_report_text, parent_win, ctx)
         except Exception as e:
             log_error("fix_text_full - RTL report dialog", e)
             try:
                 parent_win = doc.CurrentController.Frame.ContainerWindow
                 mb = parent_win.getToolkit().createMessageBox(
                     parent_win, MESSAGEBOX, MBButtons.BUTTONS_OK,
-                    "گزارش اصلاح متن", report_text
+                    "گزارش اصلاح متن", display_report_text
                 )
                 mb.execute()
             except Exception as fallback_error:
