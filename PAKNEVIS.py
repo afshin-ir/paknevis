@@ -101,6 +101,11 @@ def load_replacements(path):
         return {}
 
 REPLACEMENTS = load_replacements(REPLACEMENTS_FILE)
+REPLACEMENTS_PATTERN = (
+    re.compile(r"\b(" + "|".join(map(re.escape, REPLACEMENTS.keys())) + r")\b")
+    if REPLACEMENTS
+    else None
+)
 
 # فهرست افعال ساده برای پردازش پیشوندها
 simple_verbs = [
@@ -337,13 +342,14 @@ def fix_suffixes(text, report_counts):
     return text
 
 def fix_dict(text, report_counts):
-    if not REPLACEMENTS: return text
-    pattern = r"\b(" + "|".join(map(re.escape, REPLACEMENTS.keys())) + r")\b"
+    if REPLACEMENTS_PATTERN is None:
+        return text
+
     def replace_match(m):
         report_counts["غلط‌های املایی (بانک)"] += 1
         return REPLACEMENTS[m.group(0)]
-    return re.sub(pattern, replace_match, text)
 
+    return REPLACEMENTS_PATTERN.sub(replace_match, text)
 def fix_spaces(text, report_counts):
     corrections = [(r"(?<=«)\s+",""), (r"\s+(?=»)", ""), (r"(?<=\()\s+",""), (r"\s+(?=\))",""), (r"(?<=\[)\s+",""), (r"\s+(?=\])",""), (r"(?<=\{)\s+",""), (r"\s+(?=\})",""), (r"(?<=⟨)\s+",""), (r"\s+(?=⟩)","")]
     for pat, rep in corrections:
