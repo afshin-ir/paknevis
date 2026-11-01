@@ -35,11 +35,11 @@
             <value>service:org.afshin.paknevis.Job?Run</value>
           </prop>
           <prop oor:name="Title" oor:type="xs:string">
-            <value xml:lang="en-US">پاک‌نویس</value>
-            <value xml:lang="fa">پاک‌نویس</value>
+            <value xml:lang="en-US">✎ پاک‌نویس</value>
+            <value xml:lang="fa">✎ پاک‌نویس</value>
           </prop>
-          <prop oor:name="ImageIdentifier" oor:type="xs:string">
-            <value>%origin%/images/paknevis</value>
+          <prop oor:name="Style" oor:type="xs:string">
+            <value>Text</value>
           </prop>
           <prop oor:name="Target" oor:type="xs:string">
             <value>_self</value>
