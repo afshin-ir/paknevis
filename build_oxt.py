@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parent
 OUTPUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "Paknevis.oxt"
 FILES = (
     ("Addons.xcu", ROOT / "extension" / "Addons.xcu"),
+    ("images/paknevis_16.bmp", ROOT / "extension" / "images" / "paknevis_16.bmp"),
+    ("images/paknevis_26.bmp", ROOT / "extension" / "images" / "paknevis_26.bmp"),
     ("description.xml", ROOT / "extension" / "description.xml"),
     ("META-INF/manifest.xml", ROOT / "extension" / "META-INF" / "manifest.xml"),
     ("registration/license.txt", ROOT / "extension" / "registration" / "license.txt"),
