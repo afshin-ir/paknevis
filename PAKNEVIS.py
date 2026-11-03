@@ -507,37 +507,69 @@ def show_report_dialog(report_rows, parent_window, ctx):
     dialog.setModel(dialog_model)
     dialog.setTitle("گزارش اصلاح متن")
 
-    dialog_width = 260
-    row_height = 14
+    dialog_width = 420
+    row_height = 18
     top_margin = 12
-    detail_top = 40
     detail_rows = max(0, len(report_rows) - 1)
-    dialog_height = min(max(100, detail_top + max(1, detail_rows) * row_height + 40), 380)
+    detail_top = 42
+    midpoint = (detail_rows + 1) // 2
+
+    def wrap_description(value, max_chars=24):
+        words = value.split()
+        lines = []
+        line = ""
+        for word in words:
+            candidate = word if not line else line + " " + word
+            if line and len(candidate) > max_chars:
+                lines.append(line)
+                line = word
+            else:
+                line = candidate
+        if line:
+            lines.append(line)
+        return "\n".join(lines)
+
+    detail_items = report_rows[1:]
+    columns = (detail_items[:midpoint], detail_items[midpoint:])
+    column_heights = [
+        sum(max(row_height, (wrap_description(label).count("\n") + 1) * 12) + 2
+            for label, _count in column)
+        for column in columns
+    ]
+    dialog_height = min(max(100, detail_top + max(column_heights, default=0) + 42), 360)
     dialog_model.setPropertyValue("Width", dialog_width)
     dialog_model.setPropertyValue("Height", dialog_height)
 
-    description_width = 150
-    colon_width = 8
-    count_width = 26
-    unit_width = 34
-    column_gap = 5
     right_margin = 12
 
-    description_x = dialog_width - right_margin - description_width
-    colon_x = description_x - column_gap - colon_width
-    count_x = colon_x - column_gap - count_width
-    unit_x = count_x - column_gap - unit_width
-
-    def add_label(name, text, x, y, width, align=2, bold=False):
+    def add_label(name, text, x, y, width, align=2, bold=False,
+                  height=13, color=None, font_name=None, multiline=False):
         control = dialog_model.createInstance(
             "com.sun.star.awt.UnoControlFixedTextModel"
         )
         control.setPropertyValue("PositionX", x)
         control.setPropertyValue("PositionY", y)
         control.setPropertyValue("Width", width)
-        control.setPropertyValue("Height", 13)
+        control.setPropertyValue("Height", height)
         control.setPropertyValue("Label", text)
         control.setPropertyValue("Align", align)
+        if multiline:
+            try:
+                control.setPropertyValue("MultiLine", True)
+            except Exception:
+                pass
+        if color is not None:
+            try:
+                control.setPropertyValue("TextColor", color)
+            except Exception:
+                pass
+        if font_name:
+            try:
+                font = control.getPropertyValue("FontDescriptor")
+                font.Name = font_name
+                control.setPropertyValue("FontDescriptor", font)
+            except Exception:
+                pass
         if bold:
             try:
                 font = control.getPropertyValue("FontDescriptor")
@@ -554,37 +586,79 @@ def show_report_dialog(report_rows, parent_window, ctx):
         )
     else:
         description, count = report_rows[0]
+        total_description_width = 140
+        total_colon_width = 8
+        total_count_width = 26
+        total_unit_width = 34
+        total_gap = 5
+        total_description_x = dialog_width - right_margin - total_description_width
+        total_colon_x = total_description_x - total_gap - total_colon_width
+        total_count_x = total_colon_x - total_gap - total_count_width
+        total_unit_x = total_count_x - total_gap - total_unit_width
         add_label(
-            "total_description", description, description_x, top_margin,
-            description_width, bold=True,
+            "total_description", description, total_description_x, top_margin,
+            total_description_width, bold=True,
         )
         add_label(
-            "total_colon", ":", colon_x, top_margin, colon_width, align=1, bold=True,
+            "total_colon", ":", total_colon_x, top_margin,
+            total_colon_width, align=1, bold=True,
         )
         add_label(
-            "total_count", en_numbers_to_fa(str(count)), count_x, top_margin,
-            count_width, align=1, bold=True,
+            "total_count", en_numbers_to_fa(str(count)), total_count_x,
+            top_margin, total_count_width, align=1, bold=True,
         )
         add_label(
-            "total_unit", "اصلاح", unit_x, top_margin, unit_width, bold=True,
+            "total_unit", "اصلاح", total_unit_x, top_margin,
+            total_unit_width, bold=True,
         )
 
-        for index, (description, count) in enumerate(report_rows[1:]):
-            y = detail_top + index * row_height
-            add_label(
-                f"description_{index}", description, description_x, y,
-                description_width,
-            )
-            add_label(
-                f"colon_{index}", ":", colon_x, y, colon_width, align=1,
-            )
-            add_label(
-                f"count_{index}", en_numbers_to_fa(str(count)), count_x, y,
-                count_width, align=1,
-            )
-            add_label(
-                f"unit_{index}", "اصلاح", unit_x, y, unit_width,
-            )
+        usable_width = dialog_width - 2 * right_margin
+        column_gap = 14
+        column_width = (usable_width - column_gap) // 2
+        description_width = 100
+        check_width = 12
+        colon_width = 7
+        count_width = 20
+        unit_width = 30
+        inner_gap = 2
+
+        # The first half is in the right-hand column; the rest is in the left.
+        for column_index, column in enumerate(columns):
+            column_x = right_margin + (column_width + column_gap) * (1 - column_index)
+            column_right = column_x + column_width
+            y = detail_top
+            for local_index, (description, count) in enumerate(column):
+                wrapped_description = wrap_description(description)
+                line_count = wrapped_description.count("\n") + 1
+                item_height = max(row_height, line_count * 12)
+                check_x = column_right - check_width
+                description_x = check_x - inner_gap - description_width
+                colon_x = description_x - inner_gap - colon_width
+                count_x = colon_x - inner_gap - count_width
+                unit_x = count_x - inner_gap - unit_width
+                name = f"{column_index}_{local_index}"
+                add_label(
+                    f"check_{name}", "✓", check_x, y, check_width,
+                    align=1, height=item_height, color=0x238B57,
+                    font_name="DejaVu Sans",
+                )
+                add_label(
+                    f"description_{name}", wrapped_description, description_x, y,
+                    description_width, height=item_height, multiline=True,
+                )
+                add_label(
+                    f"colon_{name}", ":", colon_x, y, colon_width,
+                    align=1, height=item_height,
+                )
+                add_label(
+                    f"count_{name}", en_numbers_to_fa(str(count)), count_x, y,
+                    count_width, align=1, height=item_height,
+                )
+                add_label(
+                    f"unit_{name}", "اصلاح", unit_x, y, unit_width,
+                    align=1, height=item_height,
+                )
+                y += item_height + 2
 
     close_button = dialog_model.createInstance(
         "com.sun.star.awt.UnoControlButtonModel"
@@ -902,3 +976,4 @@ g_ImplementationHelper.addImplementation(
     "org.afshin.paknevis.Job",
     ("com.sun.star.task.Job",),
 )
+
