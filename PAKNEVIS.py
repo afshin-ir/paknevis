@@ -1,5 +1,6 @@
 import os
 import re
+import difflib
 import sys
 import json
 import uno
@@ -606,6 +607,151 @@ def show_report_dialog(report_rows, parent_window, ctx):
         dialog.dispose()
 
 
+# ---------- اعمال تغییرها بدون جایگزینی کل بند ----------
+def move_cursor(cursor, count, expand=False):
+    """Move a UNO text cursor in chunks because goRight accepts a short count."""
+    while count > 0:
+        step = min(count, 30000)
+        if not cursor.goRight(step, expand):
+            return False
+        count -= step
+    return True
+
+
+def apply_text_diff(text_range, old_text, new_text):
+    """Replace only changed character spans, preserving surrounding text objects."""
+    changes = [
+        (i1, i2, j1, j2)
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
+            a=old_text, b=new_text
+        ).get_opcodes()
+        if tag != "equal"
+    ]
+    text = text_range.getText()
+    range_start = text_range.getStart()
+
+    # Work from right to left so edits do not shift the positions of later patches.
+    for i1, i2, j1, j2 in reversed(changes):
+        cursor = text.createTextCursorByRange(range_start)
+        if not move_cursor(cursor, i1):
+            log_error("apply_text_diff", "could not reach change start")
+            return False
+        if not move_cursor(cursor, i2 - i1, expand=True):
+            log_error("apply_text_diff", "could not select changed text")
+            return False
+        if cursor.getString() != old_text[i1:i2]:
+            log_error("apply_text_diff", "text range did not match expected source")
+            return False
+        cursor.setString(new_text[j1:j2])
+    return True
+
+
+def get_text_run_range(text_portions):
+    """Return one range spanning adjacent plain-text portions only."""
+    first = text_portions[0]
+    last = text_portions[-1]
+    text = first.getText()
+    cursor = text.createTextCursorByRange(first.getStart())
+    cursor.gotoRange(last.getEnd(), True)
+    return cursor
+
+
+def intersect_text_ranges(text, text_range, selection):
+    """Return the plain-text overlap with a selection, or None when disjoint."""
+    if selection is None:
+        return text_range
+    try:
+        run_start = text_range.getStart()
+        run_end = text_range.getEnd()
+        selection_start = selection.getStart()
+        selection_end = selection.getEnd()
+
+        # The comparisons return -1 when the first range is behind the second,
+        # 0 when equal, and 1 when it is before it.
+        if text.compareRegionEnds(run_end, selection_start) >= 0:
+            return None
+        if text.compareRegionStarts(run_start, selection_end) != 1:
+            return None
+
+        start = (
+            selection_start
+            if text.compareRegionStarts(run_start, selection_start) == 1
+            else run_start
+        )
+        end = (
+            run_end
+            if text.compareRegionEnds(run_end, selection_end) == 1
+            else selection_end
+        )
+        cursor = text.createTextCursorByRange(start)
+        cursor.gotoRange(end, True)
+        return cursor if cursor.getString() else None
+    except Exception as e:
+        log_error("intersect_text_ranges", e)
+        return None
+
+
+def apply_fixes_to_text_range(text_range, options, report_counts):
+    old_text = text_range.getString()
+    if not old_text:
+        return
+    local_counts = get_initial_report_counts()
+    new_text = fix_all(old_text, options, local_counts)
+    if new_text == old_text:
+        return
+    if apply_text_diff(text_range, old_text, new_text):
+        for key, value in local_counts.items():
+            report_counts[key] += value
+
+
+def process_text_portions(text, options, report_counts, selections=None, status_indicator=None):
+    """Correct plain text portions while leaving footnotes and fields untouched."""
+    selection_ranges = [None] if selections is None else selections
+    paragraph_enumerator = text.createEnumeration()
+    processed = 0
+
+    while paragraph_enumerator.hasMoreElements():
+        paragraph = paragraph_enumerator.nextElement()
+        try:
+            portion_enumerator = paragraph.createEnumeration()
+        except Exception:
+            processed += 1
+            continue
+
+        text_portions = []
+
+        def process_run():
+            if not text_portions:
+                return
+            try:
+                run_range = get_text_run_range(text_portions)
+                for selection in selection_ranges:
+                    target_range = intersect_text_ranges(text, run_range, selection)
+                    if target_range is not None:
+                        apply_fixes_to_text_range(target_range, options, report_counts)
+            except Exception as e:
+                log_error("process_text_portions - text run", e)
+            finally:
+                text_portions.clear()
+
+        while portion_enumerator.hasMoreElements():
+            portion = portion_enumerator.nextElement()
+            try:
+                portion_type = portion.TextPortionType
+            except Exception:
+                portion_type = ""
+            if portion_type == "Text":
+                text_portions.append(portion)
+            else:
+                # Footnotes, fields, bookmarks, and other embedded objects are
+                # boundaries: never replace text across them.
+                process_run()
+        process_run()
+        processed += 1
+        update_status_indicator(status_indicator, processed)
+    return processed
+
+
 # ---------- ماکروی اصلی ----------
 # --- تابع اصلاح‌شده ---
 def update_status_indicator(indicator, processed):
@@ -670,29 +816,24 @@ def fix_text_full(event=None, component_context=None):
             if not hasattr(sel, "String"): continue
             if sel.String and sel.String.strip(): has_nonempty_selection = True; break
 
+        text = doc.Text
+        selected_ranges = []
         if has_nonempty_selection:
             for i in range(count):
-                try: sel = selections.getByIndex(i)
-                except Exception: continue
-                if not hasattr(sel, "String"): continue
-                old_text = sel.String
-                new_text = fix_all(old_text, options, report_counts)
-                if new_text != old_text: sel.String = new_text
-                processed_paragraphs += 1
-                update_status_indicator(status_indicator, processed_paragraphs)
-        else:
-            text = doc.Text
-            cursor = text.createTextCursor()
-            cursor.gotoStart(False)
-            while True:
-                cursor.gotoEndOfParagraph(True)
-                old_text = cursor.getString()
-                if old_text:
-                    new_text = fix_all(old_text, options, report_counts)
-                    if new_text != old_text: cursor.setString(new_text)
-                processed_paragraphs += 1
-                update_status_indicator(status_indicator, processed_paragraphs)
-                if not cursor.gotoNextParagraph(False): break
+                try:
+                    selection = selections.getByIndex(i)
+                except Exception:
+                    continue
+                if hasattr(selection, "getStart") and hasattr(selection, "getEnd"):
+                    selected_ranges.append(selection)
+
+        processed_paragraphs = process_text_portions(
+            text,
+            options,
+            report_counts,
+            selected_ranges if has_nonempty_selection else None,
+            status_indicator,
+        )
 
         end_status_indicator(status_indicator)
         status_indicator = None
