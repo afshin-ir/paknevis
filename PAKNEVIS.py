@@ -604,7 +604,6 @@ def show_report_dialog(report_rows, parent_window, ctx):
         fill.setPropertyValue("Height", height)
         fill.setPropertyValue("Label", "")
         try:
-            fill.setPropertyValue("BackgroundTransparent", False)
             fill.setPropertyValue("BackgroundColor", color)
         except Exception:
             pass
@@ -620,8 +619,10 @@ def show_report_dialog(report_rows, parent_window, ctx):
         frame.setPropertyValue("Height", height)
         frame.setPropertyValue("Label", "")
         try:
-            frame.setPropertyValue("BackgroundTransparent", True)
             frame.setPropertyValue("Border", 2)
+        except Exception:
+            pass
+        try:
             frame.setPropertyValue("BorderColor", 0xAAB7C4)
         except Exception:
             pass
