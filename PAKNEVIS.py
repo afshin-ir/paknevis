@@ -821,8 +821,51 @@ def apply_fixes_to_text_range(text_range, options, report_counts):
             report_counts[key] += value
 
 
+def same_uno_object(first, second):
+    """Compare UNO interface proxies without relying on Python proxy identity."""
+    try:
+        return uno.areSame(first, second)
+    except Exception:
+        try:
+            return first == second
+        except Exception:
+            return False
+
+
+def footnote_work_ranges(body_text, footnote, selections):
+    """Return whether to process a note, and the ranges selected inside it."""
+    if selections is None:
+        return True, None
+
+    note_ranges = []
+    anchor_selected = False
+    try:
+        anchor = footnote.getAnchor()
+    except Exception as e:
+        log_error("footnote_work_ranges - get anchor", e)
+        return False, []
+
+    for selection in selections:
+        try:
+            selection_text = selection.getText()
+        except Exception:
+            continue
+
+        if same_uno_object(selection_text, footnote):
+            note_ranges.append(selection)
+        elif same_uno_object(selection_text, body_text):
+            if intersect_text_ranges(body_text, anchor, selection) is not None:
+                anchor_selected = True
+
+    if anchor_selected:
+        return True, None
+    if note_ranges:
+        return True, note_ranges
+    return False, []
+
+
 def process_text_portions(text, options, report_counts, selections=None, status_indicator=None):
-    """Correct plain text portions while leaving footnotes and fields untouched."""
+    """Correct plain text in each story while preserving embedded text objects."""
     selection_ranges = [None] if selections is None else selections
     paragraph_enumerator = text.createEnumeration()
     processed = 0
@@ -843,6 +886,12 @@ def process_text_portions(text, options, report_counts, selections=None, status_
             try:
                 run_range = get_text_run_range(text_portions)
                 for selection in selection_ranges:
+                    if selection is not None:
+                        try:
+                            if not same_uno_object(selection.getText(), text):
+                                continue
+                        except Exception:
+                            continue
                     target_range = intersect_text_ranges(text, run_range, selection)
                     if target_range is not None:
                         apply_fixes_to_text_range(target_range, options, report_counts)
@@ -859,9 +908,26 @@ def process_text_portions(text, options, report_counts, selections=None, status_
                 portion_type = ""
             if portion_type == "Text":
                 text_portions.append(portion)
+            elif portion_type == "Footnote":
+                process_run()
+                try:
+                    footnote = portion.Footnote
+                    should_process, note_selections = footnote_work_ranges(
+                        text, footnote, selections
+                    )
+                    if should_process:
+                        processed += process_text_portions(
+                            footnote,
+                            options,
+                            report_counts,
+                            note_selections,
+                            None,
+                        )
+                except Exception as e:
+                    log_error("process_text_portions - footnote", e)
             else:
-                # Footnotes, fields, bookmarks, and other embedded objects are
-                # boundaries: never replace text across them.
+                # Fields, bookmarks, and other embedded objects are boundaries;
+                # never replace text across them.
                 process_run()
         process_run()
         processed += 1
