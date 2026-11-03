@@ -594,21 +594,6 @@ def show_report_dialog(report_rows, parent_window, ctx):
                 pass
         dialog_model.insertByName(name, control)
 
-    def add_fill(name, x, y, width, height, color):
-        fill = dialog_model.createInstance(
-            "com.sun.star.awt.UnoControlFixedTextModel"
-        )
-        fill.setPropertyValue("PositionX", x)
-        fill.setPropertyValue("PositionY", y)
-        fill.setPropertyValue("Width", width)
-        fill.setPropertyValue("Height", height)
-        fill.setPropertyValue("Label", "")
-        try:
-            fill.setPropertyValue("BackgroundColor", color)
-        except Exception:
-            pass
-        dialog_model.insertByName(name, fill)
-
     def add_table_frame(name, x, y, width, height):
         frame = dialog_model.createInstance(
             "com.sun.star.awt.UnoControlFixedTextModel"
@@ -639,7 +624,6 @@ def show_report_dialog(report_rows, parent_window, ctx):
         total_description_x = dialog_width - right_margin - total_description_width
         total_count_width = 48
         total_count_x = total_description_x - 6 - total_count_width
-        add_fill("total_count_fill", total_count_x, 9, total_count_width, 20, 0xE5F3EA)
         add_label(
             "total_description", description, total_description_x, 10,
             total_description_width, bold=True, height=18,
@@ -647,6 +631,7 @@ def show_report_dialog(report_rows, parent_window, ctx):
         add_label(
             "total_count", en_numbers_to_fa(str(count)), total_count_x,
             10, total_count_width, align=1, bold=True, height=18,
+            background=0xE5F3EA,
         )
 
         count_width = 32
@@ -664,35 +649,33 @@ def show_report_dialog(report_rows, parent_window, ctx):
             description_x = check_x - inner_gap - description_width
             count_x = description_x - inner_gap - count_width
 
-            add_fill(f"header_fill_{column_index}", column_x, header_y,
-                     column_width, header_height, header_color)
             add_label(f"header_description_{column_index}", "شرح اصلاح",
                       description_x, header_y, description_width,
-                      bold=True, height=header_height)
+                      bold=True, height=header_height, background=header_color)
             add_label(f"header_count_{column_index}", "تعداد",
                       count_x, header_y, count_width, align=1,
-                      bold=True, height=header_height)
+                      bold=True, height=header_height, background=header_color)
 
             y = data_top
             for local_index, (description, count) in enumerate(column):
                 item_height = paired_row_heights[local_index] - 2
                 background = 0xFFFFFF if local_index % 2 == 0 else stripe_color
-                add_fill(f"row_fill_{column_index}_{local_index}", column_x, y,
-                         column_width, item_height, background)
                 add_label(
                     f"check_{column_index}_{local_index}", "✓", check_x, y,
                     check_width, align=1, height=item_height, color=0x238B57,
-                    font_name="DejaVu Sans",
+                    font_name="DejaVu Sans", background=background,
                 )
                 add_label(
                     f"description_{column_index}_{local_index}",
                     wrap_description(description), description_x, y,
                     description_width, height=item_height, multiline=True,
+                    background=background,
                 )
                 add_label(
                     f"count_{column_index}_{local_index}",
                     en_numbers_to_fa(str(count)), count_x, y,
                     count_width, align=1, height=item_height,
+                    background=background,
                 )
                 y += paired_row_heights[local_index]
             add_table_frame(
