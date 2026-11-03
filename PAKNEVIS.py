@@ -507,14 +507,14 @@ def show_report_dialog(report_rows, parent_window, ctx):
     dialog.setModel(dialog_model)
     dialog.setTitle("گزارش اصلاح متن")
 
-    dialog_width = 420
+    dialog_width = 380
     row_height = 18
     top_margin = 12
     detail_rows = max(0, len(report_rows) - 1)
     detail_top = 42
     midpoint = (detail_rows + 1) // 2
 
-    def wrap_description(value, max_chars=24):
+    def wrap_description(value, max_chars=20):
         words = value.split()
         lines = []
         line = ""
@@ -615,7 +615,7 @@ def show_report_dialog(report_rows, parent_window, ctx):
         usable_width = dialog_width - 2 * right_margin
         column_gap = 14
         column_width = (usable_width - column_gap) // 2
-        description_width = 100
+        description_width = 93
         check_width = 12
         colon_width = 7
         count_width = 20
