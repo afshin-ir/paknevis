@@ -1,5 +1,6 @@
 import os
 import re
+import difflib
 import sys
 import json
 import uno
@@ -83,9 +84,9 @@ class FixOption(Enum):
             (cls.FIX_NUMBERS_EN.name, "اعداد انگلیسی"),
             (cls.FIX_NUMBERS_AR.name, "اعداد عربی"),
             (cls.FIX_HE_YE.name, "کسرهٔ اضافه"),
-            (cls.FIX_ME_NEMI.name, "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"),
+            (cls.FIX_ME_NEMI.name, "فاصلهٔ بعد از پیشوند افعال، مثل: می/نمی"),
             (cls.FIX_PREFIX_VERBS.name, "فاصلهٔ بین اجزاء افعال پیشوندی"),
-            (cls.FIX_SUFFIXES.name, "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"),
+            (cls.FIX_SUFFIXES.name, "فاصلهٔ قبل از ضمایر ملکی، مثل: رفته ام"),
             (cls.FIX_SPACES.name, "فاصلهٔ داخلی علائم سجاوندی"),
             (cls.FIX_SPACE_BEFORE_PUNCT.name, "فاصلهٔ قبل از علائم سجاوندی (با استثناء)"),
             (cls.FIX_EXTRA_SPACES.name, "فاصلهٔ اضافه بین واژه‌ها"),
@@ -177,7 +178,7 @@ def get_initial_report_counts():
         "کاف عربی": 0, "ی عربی": 0, "ویرگول انگلیسی": 0, "نقطه‌ویرگول انگلیسی": 0,
         "علامت سؤال انگلیسی": 0, "گیومهٔ انگلیسی": 0, "اعداد انگلیسی": 0, "اعداد عربی": 0,
         "درصد انگلیسی": 0, "کسرهٔ اضافه": 0, "علامت پرسش تکراری": 0, "علامت تعجب تکراری": 0,
-        "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)": 0, "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)": 0,
+        "فاصلهٔ بعد از پیشوند افعال، مثل: می/نمی": 0, "فاصلهٔ قبل از ضمایر ملکی، مثل: رفته ام": 0,
         "فاصلهٔ قبل از پسوند جمع": 0, "فاصلهٔ اضافه بین واژه‌ها": 0, "فاصلهٔ داخلی علائم سجاوندی": 0,
         "فاصلهٔ قبل از علائم سجاوندی": 0, "فاصلهٔ بین اجزاء افعال پیشوندی": 0, "غلط‌های املایی (بانک)": 0,
         "سه‌نقطهٔ تعلیق": 0, "نیم‌فاصلهٔ کاذب": 0,
@@ -384,7 +385,7 @@ def fix_me_nemi(text, report_counts):
     def replace_func(match):
         prefix, word_part = match.group(1), match.group(2)
         if any(word_part.endswith(s) for s in VERB_SUFFIXES) or word_part in ["شده","رفت","آمد","خورد","گشت","شد"]:
-            report_counts["فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"] +=1
+            report_counts["فاصلهٔ بعد از پیشوند افعال، مثل: می/نمی"] +=1
             return prefix+ZWNJ+word_part
         return match.group(0)
     return re.sub(pattern, replace_func, text)
@@ -414,7 +415,7 @@ def fix_pronominal_suffixes(text, report_counts):
     suffixes_pattern = r"(تر(?:ین)?|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
     def repl(match):
         word, suffix = match.group(1), match.group(2)
-        report_counts["فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"] += 1
+        report_counts["فاصلهٔ قبل از ضمایر ملکی، مثل: رفته ام"] += 1
         if suffix in ["م", "ت", "ش"]: return f"{word}{suffix}"
         return f"{word}{ZWNJ}{suffix}"
     pattern = rf"(\S+)\s+{suffixes_pattern}\b"
@@ -506,37 +507,84 @@ def show_report_dialog(report_rows, parent_window, ctx):
     dialog.setModel(dialog_model)
     dialog.setTitle("گزارش اصلاح متن")
 
-    dialog_width = 260
-    row_height = 14
-    top_margin = 12
-    detail_top = 40
-    detail_rows = max(0, len(report_rows) - 1)
-    dialog_height = min(max(100, detail_top + max(1, detail_rows) * row_height + 40), 380)
+    dialog_width = 360
+    right_margin = 12
+    column_gap = 12
+    column_width = (dialog_width - 2 * right_margin - column_gap) // 2
+    header_y = 34
+    header_height = 18
+    data_top = header_y + header_height + 3
+    base_row_height = 14
+    detail_items = report_rows[1:]
+    midpoint = (len(detail_items) + 1) // 2
+    columns = (detail_items[:midpoint], detail_items[midpoint:])
+
+    def wrap_description(value, max_chars=32):
+        words = value.split()
+        lines = []
+        line = ""
+        for word in words:
+            candidate = word if not line else line + " " + word
+            if line and len(candidate) > max_chars:
+                lines.append(line)
+                line = word
+            else:
+                line = candidate
+        if line:
+            lines.append(line)
+        return "\n".join(lines)
+
+    paired_row_heights = []
+    for row_index in range(max(len(columns[0]), len(columns[1]))):
+        heights = [
+            max(base_row_height, (wrap_description(column[row_index][0]).count("\n") + 1) * 11)
+            for column in columns
+            if row_index < len(column)
+        ]
+        paired_row_heights.append(max(heights, default=base_row_height) + 2)
+    table_height = header_height + 3 + sum(paired_row_heights)
+    dialog_height = min(max(120, data_top + sum(paired_row_heights) + 38), 280)
     dialog_model.setPropertyValue("Width", dialog_width)
     dialog_model.setPropertyValue("Height", dialog_height)
 
-    description_width = 150
-    colon_width = 8
-    count_width = 26
-    unit_width = 34
-    column_gap = 5
-    right_margin = 12
-
-    description_x = dialog_width - right_margin - description_width
-    colon_x = description_x - column_gap - colon_width
-    count_x = colon_x - column_gap - count_width
-    unit_x = count_x - column_gap - unit_width
-
-    def add_label(name, text, x, y, width, align=2, bold=False):
+    def add_label(name, text, x, y, width, align=2, bold=False,
+                  height=13, color=None, font_name=None, multiline=False,
+                  background=None):
         control = dialog_model.createInstance(
             "com.sun.star.awt.UnoControlFixedTextModel"
         )
         control.setPropertyValue("PositionX", x)
         control.setPropertyValue("PositionY", y)
         control.setPropertyValue("Width", width)
-        control.setPropertyValue("Height", 13)
+        control.setPropertyValue("Height", height)
         control.setPropertyValue("Label", text)
         control.setPropertyValue("Align", align)
+        try:
+            control.setPropertyValue("BackgroundTransparent", background is None)
+        except Exception:
+            pass
+        if background is not None:
+            try:
+                control.setPropertyValue("BackgroundColor", background)
+            except Exception:
+                pass
+        if multiline:
+            try:
+                control.setPropertyValue("MultiLine", True)
+            except Exception:
+                pass
+        if color is not None:
+            try:
+                control.setPropertyValue("TextColor", color)
+            except Exception:
+                pass
+        if font_name:
+            try:
+                font = control.getPropertyValue("FontDescriptor")
+                font.Name = font_name
+                control.setPropertyValue("FontDescriptor", font)
+            except Exception:
+                pass
         if bold:
             try:
                 font = control.getPropertyValue("FontDescriptor")
@@ -546,6 +594,40 @@ def show_report_dialog(report_rows, parent_window, ctx):
                 pass
         dialog_model.insertByName(name, control)
 
+    def add_table_frame(name, x, y, width, height):
+        frame = dialog_model.createInstance(
+            "com.sun.star.awt.UnoControlFixedTextModel"
+        )
+        frame.setPropertyValue("PositionX", x)
+        frame.setPropertyValue("PositionY", y)
+        frame.setPropertyValue("Width", width)
+        frame.setPropertyValue("Height", height)
+        frame.setPropertyValue("Label", "")
+        try:
+            frame.setPropertyValue("Border", 2)
+        except Exception:
+            pass
+        try:
+            frame.setPropertyValue("BorderColor", 0xAAB7C4)
+        except Exception:
+            pass
+        dialog_model.insertByName(name, frame)
+
+    def add_backplate(name, x, y, width, height, color):
+        plate = dialog_model.createInstance(
+            "com.sun.star.awt.UnoControlFixedTextModel"
+        )
+        plate.setPropertyValue("PositionX", x)
+        plate.setPropertyValue("PositionY", y)
+        plate.setPropertyValue("Width", width)
+        plate.setPropertyValue("Height", height)
+        plate.setPropertyValue("Label", "")
+        try:
+            plate.setPropertyValue("BackgroundColor", color)
+        except Exception:
+            pass
+        dialog_model.insertByName(name, plate)
+
     if not report_rows:
         add_label(
             "empty_report", "هیچ اصلاحی لازم نبود.",
@@ -553,36 +635,72 @@ def show_report_dialog(report_rows, parent_window, ctx):
         )
     else:
         description, count = report_rows[0]
+        total_description_width = 130
+        total_description_x = dialog_width - right_margin - total_description_width
+        total_count_width = 48
+        total_count_x = total_description_x - 6 - total_count_width
         add_label(
-            "total_description", description, description_x, top_margin,
-            description_width, bold=True,
+            "total_description", description, total_description_x, 10,
+            total_description_width, bold=True, height=18,
         )
         add_label(
-            "total_colon", ":", colon_x, top_margin, colon_width, align=1, bold=True,
-        )
-        add_label(
-            "total_count", en_numbers_to_fa(str(count)), count_x, top_margin,
-            count_width, align=1, bold=True,
-        )
-        add_label(
-            "total_unit", "اصلاح", unit_x, top_margin, unit_width, bold=True,
+            "total_count", en_numbers_to_fa(str(count)), total_count_x,
+            10, total_count_width, align=1, bold=True, height=18,
+            background=0xE5F3EA,
         )
 
-        for index, (description, count) in enumerate(report_rows[1:]):
-            y = detail_top + index * row_height
-            add_label(
-                f"description_{index}", description, description_x, y,
-                description_width,
+        count_width = 32
+        description_width = 104
+        check_width = 14
+        inner_gap = 3
+        header_color = 0xE8EEF4
+        stripe_color = 0xF2F6F9
+
+        # Build compact, aligned tables; the first half is on the right.
+        for column_index, column in enumerate(columns):
+            column_x = right_margin + (column_width + column_gap) * (1 - column_index)
+            column_right = column_x + column_width
+            check_x = column_right - check_width - 3
+            description_x = check_x - inner_gap - description_width
+            count_x = description_x - inner_gap - count_width
+
+            add_label(f"header_description_{column_index}", "شرح اصلاح",
+                      description_x, header_y, description_width,
+                      bold=True, height=header_height)
+            add_label(f"header_count_{column_index}", "تعداد",
+                      count_x, header_y, count_width, align=1,
+                      bold=True, height=header_height)
+
+            y = data_top
+            for local_index, (description, count) in enumerate(column):
+                item_height = paired_row_heights[local_index] - 2
+                background = 0xFFFFFF if local_index % 2 == 0 else stripe_color
+                add_label(
+                    f"check_{column_index}_{local_index}", "✓", check_x, y,
+                    check_width, align=1, height=item_height, color=0x238B57,
+                    font_name="DejaVu Sans", background=background,
+                )
+                add_label(
+                    f"description_{column_index}_{local_index}",
+                    wrap_description(description), description_x, y,
+                    description_width, height=item_height, multiline=True,
+                    background=background,
+                )
+                add_label(
+                    f"count_{column_index}_{local_index}",
+                    en_numbers_to_fa(str(count)), count_x, y,
+                    count_width, align=1, height=item_height,
+                    background=background,
+                )
+                y += paired_row_heights[local_index]
+            add_backplate(
+                f"header_backplate_{column_index}", column_x + 1,
+                header_y + 1, column_width - 2, header_height - 2,
+                header_color,
             )
-            add_label(
-                f"colon_{index}", ":", colon_x, y, colon_width, align=1,
-            )
-            add_label(
-                f"count_{index}", en_numbers_to_fa(str(count)), count_x, y,
-                count_width, align=1,
-            )
-            add_label(
-                f"unit_{index}", "اصلاح", unit_x, y, unit_width,
+            add_table_frame(
+                f"table_border_{column_index}", column_x, header_y,
+                column_width, table_height,
             )
 
     close_button = dialog_model.createInstance(
@@ -591,7 +709,7 @@ def show_report_dialog(report_rows, parent_window, ctx):
     button_width = 60
     button_height = 17
     close_button.setPropertyValue("PositionX", (dialog_width - button_width) // 2)
-    close_button.setPropertyValue("PositionY", dialog_height - 27)
+    close_button.setPropertyValue("PositionY", dialog_height - 25)
     close_button.setPropertyValue("Width", button_width)
     close_button.setPropertyValue("Height", button_height)
     close_button.setPropertyValue("Label", "بستن")
@@ -604,6 +722,217 @@ def show_report_dialog(report_rows, parent_window, ctx):
         dialog.execute()
     finally:
         dialog.dispose()
+
+
+# ---------- اعمال تغییرها بدون جایگزینی کل بند ----------
+def move_cursor(cursor, count, expand=False):
+    """Move a UNO text cursor in chunks because goRight accepts a short count."""
+    while count > 0:
+        step = min(count, 30000)
+        if not cursor.goRight(step, expand):
+            return False
+        count -= step
+    return True
+
+
+def apply_text_diff(text_range, old_text, new_text):
+    """Replace only changed character spans, preserving surrounding text objects."""
+    changes = [
+        (i1, i2, j1, j2)
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
+            a=old_text, b=new_text
+        ).get_opcodes()
+        if tag != "equal"
+    ]
+    text = text_range.getText()
+    range_start = text_range.getStart()
+
+    # Work from right to left so edits do not shift the positions of later patches.
+    for i1, i2, j1, j2 in reversed(changes):
+        cursor = text.createTextCursorByRange(range_start)
+        if not move_cursor(cursor, i1):
+            log_error("apply_text_diff", "could not reach change start")
+            return False
+        if not move_cursor(cursor, i2 - i1, expand=True):
+            log_error("apply_text_diff", "could not select changed text")
+            return False
+        if cursor.getString() != old_text[i1:i2]:
+            log_error("apply_text_diff", "text range did not match expected source")
+            return False
+        cursor.setString(new_text[j1:j2])
+    return True
+
+
+def get_text_run_range(text_portions):
+    """Return one range spanning adjacent plain-text portions only."""
+    first = text_portions[0]
+    last = text_portions[-1]
+    text = first.getText()
+    cursor = text.createTextCursorByRange(first.getStart())
+    cursor.gotoRange(last.getEnd(), True)
+    return cursor
+
+
+def intersect_text_ranges(text, text_range, selection):
+    """Return the plain-text overlap with a selection, or None when disjoint."""
+    if selection is None:
+        return text_range
+    try:
+        run_start = text_range.getStart()
+        run_end = text_range.getEnd()
+        selection_start = selection.getStart()
+        selection_end = selection.getEnd()
+
+        # The comparisons return -1 when the first range is behind the second,
+        # 0 when equal, and 1 when it is before it.
+        if text.compareRegionEnds(run_end, selection_start) >= 0:
+            return None
+        if text.compareRegionStarts(run_start, selection_end) != 1:
+            return None
+
+        start = (
+            selection_start
+            if text.compareRegionStarts(run_start, selection_start) == 1
+            else run_start
+        )
+        end = (
+            run_end
+            if text.compareRegionEnds(run_end, selection_end) == 1
+            else selection_end
+        )
+        cursor = text.createTextCursorByRange(start)
+        cursor.gotoRange(end, True)
+        return cursor if cursor.getString() else None
+    except Exception as e:
+        log_error("intersect_text_ranges", e)
+        return None
+
+
+def apply_fixes_to_text_range(text_range, options, report_counts):
+    old_text = text_range.getString()
+    if not old_text:
+        return
+    local_counts = get_initial_report_counts()
+    new_text = fix_all(old_text, options, local_counts)
+    if new_text == old_text:
+        return
+    if apply_text_diff(text_range, old_text, new_text):
+        for key, value in local_counts.items():
+            report_counts[key] += value
+
+
+def same_uno_object(first, second):
+    """Compare UNO interface proxies without relying on Python proxy identity."""
+    try:
+        return uno.areSame(first, second)
+    except Exception:
+        try:
+            return first == second
+        except Exception:
+            return False
+
+
+def footnote_work_ranges(body_text, footnote, selections):
+    """Return whether to process a note, and the ranges selected inside it."""
+    if selections is None:
+        return True, None
+
+    note_ranges = []
+    anchor_selected = False
+    try:
+        anchor = footnote.getAnchor()
+    except Exception as e:
+        log_error("footnote_work_ranges - get anchor", e)
+        return False, []
+
+    for selection in selections:
+        try:
+            selection_text = selection.getText()
+        except Exception:
+            continue
+
+        if same_uno_object(selection_text, footnote):
+            note_ranges.append(selection)
+        elif same_uno_object(selection_text, body_text):
+            if intersect_text_ranges(body_text, anchor, selection) is not None:
+                anchor_selected = True
+
+    if anchor_selected:
+        return True, None
+    if note_ranges:
+        return True, note_ranges
+    return False, []
+
+
+def process_text_portions(text, options, report_counts, selections=None, status_indicator=None):
+    """Correct plain text in each story while preserving embedded text objects."""
+    selection_ranges = [None] if selections is None else selections
+    paragraph_enumerator = text.createEnumeration()
+    processed = 0
+
+    while paragraph_enumerator.hasMoreElements():
+        paragraph = paragraph_enumerator.nextElement()
+        try:
+            portion_enumerator = paragraph.createEnumeration()
+        except Exception:
+            processed += 1
+            continue
+
+        text_portions = []
+
+        def process_run():
+            if not text_portions:
+                return
+            try:
+                run_range = get_text_run_range(text_portions)
+                for selection in selection_ranges:
+                    if selection is not None:
+                        try:
+                            if not same_uno_object(selection.getText(), text):
+                                continue
+                        except Exception:
+                            continue
+                    target_range = intersect_text_ranges(text, run_range, selection)
+                    if target_range is not None:
+                        apply_fixes_to_text_range(target_range, options, report_counts)
+            except Exception as e:
+                log_error("process_text_portions - text run", e)
+            finally:
+                text_portions.clear()
+
+        while portion_enumerator.hasMoreElements():
+            portion = portion_enumerator.nextElement()
+            try:
+                portion_type = portion.TextPortionType
+            except Exception:
+                portion_type = ""
+            if portion_type == "Text":
+                text_portions.append(portion)
+            elif portion_type == "Footnote":
+                process_run()
+                try:
+                    footnote = portion.Footnote
+                    should_process, note_selections = footnote_work_ranges(
+                        text, footnote, selections
+                    )
+                    if should_process:
+                        processed += process_text_portions(
+                            footnote,
+                            options,
+                            report_counts,
+                            note_selections,
+                            None,
+                        )
+                except Exception as e:
+                    log_error("process_text_portions - footnote", e)
+            else:
+                # Fields, bookmarks, and other embedded objects are boundaries;
+                # never replace text across them.
+                process_run()
+        process_run()
+        processed += 1
+        update_status_indicator(status_indicator, processed)
+    return processed
 
 
 # ---------- ماکروی اصلی ----------
@@ -670,29 +999,24 @@ def fix_text_full(event=None, component_context=None):
             if not hasattr(sel, "String"): continue
             if sel.String and sel.String.strip(): has_nonempty_selection = True; break
 
+        text = doc.Text
+        selected_ranges = []
         if has_nonempty_selection:
             for i in range(count):
-                try: sel = selections.getByIndex(i)
-                except Exception: continue
-                if not hasattr(sel, "String"): continue
-                old_text = sel.String
-                new_text = fix_all(old_text, options, report_counts)
-                if new_text != old_text: sel.String = new_text
-                processed_paragraphs += 1
-                update_status_indicator(status_indicator, processed_paragraphs)
-        else:
-            text = doc.Text
-            cursor = text.createTextCursor()
-            cursor.gotoStart(False)
-            while True:
-                cursor.gotoEndOfParagraph(True)
-                old_text = cursor.getString()
-                if old_text:
-                    new_text = fix_all(old_text, options, report_counts)
-                    if new_text != old_text: cursor.setString(new_text)
-                processed_paragraphs += 1
-                update_status_indicator(status_indicator, processed_paragraphs)
-                if not cursor.gotoNextParagraph(False): break
+                try:
+                    selection = selections.getByIndex(i)
+                except Exception:
+                    continue
+                if hasattr(selection, "getStart") and hasattr(selection, "getEnd"):
+                    selected_ranges.append(selection)
+
+        processed_paragraphs = process_text_portions(
+            text,
+            options,
+            report_counts,
+            selected_ranges if has_nonempty_selection else None,
+            status_indicator,
+        )
 
         end_status_indicator(status_indicator)
         status_indicator = None
@@ -761,3 +1085,4 @@ g_ImplementationHelper.addImplementation(
     "org.afshin.paknevis.Job",
     ("com.sun.star.task.Job",),
 )
+
