@@ -613,6 +613,21 @@ def show_report_dialog(report_rows, parent_window, ctx):
             pass
         dialog_model.insertByName(name, frame)
 
+    def add_backplate(name, x, y, width, height, color):
+        plate = dialog_model.createInstance(
+            "com.sun.star.awt.UnoControlFixedTextModel"
+        )
+        plate.setPropertyValue("PositionX", x)
+        plate.setPropertyValue("PositionY", y)
+        plate.setPropertyValue("Width", width)
+        plate.setPropertyValue("Height", height)
+        plate.setPropertyValue("Label", "")
+        try:
+            plate.setPropertyValue("BackgroundColor", color)
+        except Exception:
+            pass
+        dialog_model.insertByName(name, plate)
+
     if not report_rows:
         add_label(
             "empty_report", "هیچ اصلاحی لازم نبود.",
@@ -651,10 +666,10 @@ def show_report_dialog(report_rows, parent_window, ctx):
 
             add_label(f"header_description_{column_index}", "شرح اصلاح",
                       description_x, header_y, description_width,
-                      bold=True, height=header_height, background=header_color)
+                      bold=True, height=header_height)
             add_label(f"header_count_{column_index}", "تعداد",
                       count_x, header_y, count_width, align=1,
-                      bold=True, height=header_height, background=header_color)
+                      bold=True, height=header_height)
 
             y = data_top
             for local_index, (description, count) in enumerate(column):
@@ -678,6 +693,11 @@ def show_report_dialog(report_rows, parent_window, ctx):
                     background=background,
                 )
                 y += paired_row_heights[local_index]
+            add_backplate(
+                f"header_backplate_{column_index}", column_x + 1,
+                header_y + 1, column_width - 2, header_height - 2,
+                header_color,
+            )
             add_table_frame(
                 f"table_border_{column_index}", column_x, header_y,
                 column_width, table_height,
