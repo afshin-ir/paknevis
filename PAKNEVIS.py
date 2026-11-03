@@ -84,9 +84,9 @@ class FixOption(Enum):
             (cls.FIX_NUMBERS_EN.name, "اعداد انگلیسی"),
             (cls.FIX_NUMBERS_AR.name, "اعداد عربی"),
             (cls.FIX_HE_YE.name, "کسرهٔ اضافه"),
-            (cls.FIX_ME_NEMI.name, "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"),
+            (cls.FIX_ME_NEMI.name, "فاصلهٔ بعد از پیشوند افعال، مثل: می/نمی"),
             (cls.FIX_PREFIX_VERBS.name, "فاصلهٔ بین اجزاء افعال پیشوندی"),
-            (cls.FIX_SUFFIXES.name, "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"),
+            (cls.FIX_SUFFIXES.name, "فاصلهٔ قبل از ضمایر ملکی، مثل: رفته ام"),
             (cls.FIX_SPACES.name, "فاصلهٔ داخلی علائم سجاوندی"),
             (cls.FIX_SPACE_BEFORE_PUNCT.name, "فاصلهٔ قبل از علائم سجاوندی (با استثناء)"),
             (cls.FIX_EXTRA_SPACES.name, "فاصلهٔ اضافه بین واژه‌ها"),
@@ -178,7 +178,7 @@ def get_initial_report_counts():
         "کاف عربی": 0, "ی عربی": 0, "ویرگول انگلیسی": 0, "نقطه‌ویرگول انگلیسی": 0,
         "علامت سؤال انگلیسی": 0, "گیومهٔ انگلیسی": 0, "اعداد انگلیسی": 0, "اعداد عربی": 0,
         "درصد انگلیسی": 0, "کسرهٔ اضافه": 0, "علامت پرسش تکراری": 0, "علامت تعجب تکراری": 0,
-        "فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)": 0, "فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)": 0,
+        "فاصلهٔ بعد از پیشوند افعال، مثل: می/نمی": 0, "فاصلهٔ قبل از ضمایر ملکی، مثل: رفته ام": 0,
         "فاصلهٔ قبل از پسوند جمع": 0, "فاصلهٔ اضافه بین واژه‌ها": 0, "فاصلهٔ داخلی علائم سجاوندی": 0,
         "فاصلهٔ قبل از علائم سجاوندی": 0, "فاصلهٔ بین اجزاء افعال پیشوندی": 0, "غلط‌های املایی (بانک)": 0,
         "سه‌نقطهٔ تعلیق": 0, "نیم‌فاصلهٔ کاذب": 0,
@@ -385,7 +385,7 @@ def fix_me_nemi(text, report_counts):
     def replace_func(match):
         prefix, word_part = match.group(1), match.group(2)
         if any(word_part.endswith(s) for s in VERB_SUFFIXES) or word_part in ["شده","رفت","آمد","خورد","گشت","شد"]:
-            report_counts["فاصلهٔ بعد از پیشوند افعال (مثل: می/نمی)"] +=1
+            report_counts["فاصلهٔ بعد از پیشوند افعال، مثل: می/نمی"] +=1
             return prefix+ZWNJ+word_part
         return match.group(0)
     return re.sub(pattern, replace_func, text)
@@ -415,7 +415,7 @@ def fix_pronominal_suffixes(text, report_counts):
     suffixes_pattern = r"(تر(?:ین)?|م|ت|ش|ام|ات|اش|ایم|اید|اند|مان|تان|شان)"
     def repl(match):
         word, suffix = match.group(1), match.group(2)
-        report_counts["فاصلهٔ قبل از ضمایر ملکی (مثل: رفته ام)"] += 1
+        report_counts["فاصلهٔ قبل از ضمایر ملکی، مثل: رفته ام"] += 1
         if suffix in ["م", "ت", "ش"]: return f"{word}{suffix}"
         return f"{word}{ZWNJ}{suffix}"
     pattern = rf"(\S+)\s+{suffixes_pattern}\b"
@@ -542,7 +542,7 @@ def show_report_dialog(report_rows, parent_window, ctx):
             if row_index < len(column)
         ]
         paired_row_heights.append(max(heights, default=base_row_height) + 2)
-    table_height = header_height + sum(paired_row_heights)
+    table_height = header_height + 3 + sum(paired_row_heights)
     dialog_height = min(max(120, data_top + sum(paired_row_heights) + 38), 280)
     dialog_model.setPropertyValue("Width", dialog_width)
     dialog_model.setPropertyValue("Height", dialog_height)
@@ -609,6 +609,23 @@ def show_report_dialog(report_rows, parent_window, ctx):
         except Exception:
             pass
         dialog_model.insertByName(name, fill)
+
+    def add_table_frame(name, x, y, width, height):
+        frame = dialog_model.createInstance(
+            "com.sun.star.awt.UnoControlFixedTextModel"
+        )
+        frame.setPropertyValue("PositionX", x)
+        frame.setPropertyValue("PositionY", y)
+        frame.setPropertyValue("Width", width)
+        frame.setPropertyValue("Height", height)
+        frame.setPropertyValue("Label", "")
+        try:
+            frame.setPropertyValue("BackgroundTransparent", True)
+            frame.setPropertyValue("Border", 2)
+            frame.setPropertyValue("BorderColor", 0xAAB7C4)
+        except Exception:
+            pass
+        dialog_model.insertByName(name, frame)
 
     if not report_rows:
         add_label(
@@ -677,6 +694,10 @@ def show_report_dialog(report_rows, parent_window, ctx):
                     count_width, align=1, height=item_height,
                 )
                 y += paired_row_heights[local_index]
+            add_table_frame(
+                f"table_border_{column_index}", column_x, header_y,
+                column_width, table_height,
+            )
 
     close_button = dialog_model.createInstance(
         "com.sun.star.awt.UnoControlButtonModel"
