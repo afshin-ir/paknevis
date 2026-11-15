@@ -384,6 +384,10 @@ def fix_me_nemi(text, report_counts):
     pattern = r"(?<!\u200c)\b(ن?می)(?:\s+)?([\u0600-\u06FF]+)\b"
     def replace_func(match):
         prefix, word_part = match.group(1), match.group(2)
+        # Nouns beginning with «می» can look like verbs to the suffix check.
+        # In particular, میلیارد must never become «می‌لیارد».
+        if prefix.endswith("می") and word_part.startswith("لیارد"):
+            return match.group(0)
         if any(word_part.endswith(s) for s in VERB_SUFFIXES) or word_part in ["شده","رفت","آمد","خورد","گشت","شد"]:
             report_counts["فاصلهٔ بعد از پیشوند افعال، مثل: می/نمی"] +=1
             return prefix+ZWNJ+word_part
@@ -935,6 +939,69 @@ def process_text_portions(text, options, report_counts, selections=None, status_
     return processed
 
 
+def selection_covers_text(text, selection):
+    """Return True when a selection covers the complete text object."""
+    try:
+        selection_start = selection.getStart()
+        selection_end = selection.getEnd()
+        text_start = text.getStart()
+        text_end = text.getEnd()
+        starts_before_text = text.compareRegionStarts(
+            selection_start, text_start
+        ) >= 0
+        ends_after_text = text.compareRegionEnds(
+            text_end, selection_end
+        ) >= 0
+        return starts_before_text and ends_after_text
+    except Exception:
+        return False
+
+
+def process_text_tables(doc, options, report_counts, selections=None,
+                        status_indicator=None):
+    """Process each table cell as its own text story."""
+    try:
+        tables = doc.TextTables
+        table_count = tables.getCount()
+    except Exception as e:
+        log_error("process_text_tables - get tables", e)
+        return 0
+
+    process_all_cells = selections is None
+    if not process_all_cells:
+        try:
+            process_all_cells = any(
+                same_uno_object(selection.getText(), doc.Text)
+                and selection_covers_text(doc.Text, selection)
+                for selection in selections
+            )
+        except Exception:
+            process_all_cells = False
+
+    processed = 0
+    for table_index in range(table_count):
+        try:
+            table = tables.getByIndex(table_index)
+            cell_names = table.getCellNames()
+        except Exception as e:
+            log_error("process_text_tables - get cells", e)
+            continue
+
+        for cell_name in cell_names:
+            try:
+                cell = table.getCellByName(cell_name)
+                processed += process_text_portions(
+                    cell,
+                    options,
+                    report_counts,
+                    None if process_all_cells else selections,
+                    status_indicator,
+                )
+            except Exception as e:
+                log_error("process_text_tables - cell", e)
+    return processed
+
+
 # ---------- ماکروی اصلی ----------
 # --- تابع اصلاح‌شده ---
 def update_status_indicator(indicator, processed):
@@ -1012,6 +1079,13 @@ def fix_text_full(event=None, component_context=None):
 
         processed_paragraphs = process_text_portions(
             text,
+            options,
+            report_counts,
+            selected_ranges if has_nonempty_selection else None,
+            status_indicator,
+        )
+        processed_paragraphs += process_text_tables(
+            doc,
             options,
             report_counts,
             selected_ranges if has_nonempty_selection else None,
